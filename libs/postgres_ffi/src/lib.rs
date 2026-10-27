@@ -306,9 +306,8 @@ pub fn decode_control_file(buf: &[u8]) -> anyhow::Result<ControlFileData> {
     // The offsets are taken from the vendored headers of each major version via
     // offset_of!, so they stay correct if a future minor release shifts them.
     let offsetof_crc = match pg_control_version {
-        1400 => v14::bindings::ControlFileData::pg_control_crc_offset(),
-        1500 => v15::bindings::ControlFileData::pg_control_crc_offset(),
-        1600 => v16::bindings::ControlFileData::pg_control_crc_offset(),
+        // v14, v15 and v16 all still write PG_CONTROL_VERSION 1300, with one shared layout.
+        1300 => v16::bindings::ControlFileData::pg_control_crc_offset(),
         1700 => v17::bindings::ControlFileData::pg_control_crc_offset(),
         1800 => v18::bindings::ControlFileData::pg_control_crc_offset(),
         other => anyhow::bail!("unrecognized pg_control_version {other}"),
@@ -470,6 +469,31 @@ pub mod waldecoder {
                     lsn: self.lsn,
                 })
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod decode_control_file_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_every_supported_version() {
+        // v14..v16 write PG_CONTROL_VERSION 1300; v17 and v18 write 1700 and 1800.
+        let v16 = v16::bindings::ControlFileData {
+            pg_control_version: 1300,
+            ..Default::default()
+        };
+        let v17 = v17::bindings::ControlFileData {
+            pg_control_version: 1700,
+            ..Default::default()
+        };
+        let v18 = v18::bindings::ControlFileData {
+            pg_control_version: 1800,
+            ..Default::default()
+        };
+        for buf in [v16.encode(), v17.encode(), v18.encode()] {
+            decode_control_file(&buf).unwrap();
         }
     }
 }

@@ -2136,6 +2136,7 @@ ENV PG_VERSION=${PG_VERSION:?}
 #########################################################################################
 FROM $BASE_IMAGE_SHA
 ARG DEBIAN_VERSION
+ARG PG_VERSION
 
 # Use strict mode for bash to catch errors early
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
@@ -2170,14 +2171,22 @@ RUN apt update && \
         echo "Unknown Debian version ${DEBIAN_VERSION}" && exit 1 \
       ;; \
     esac && \
+    # rdkit on v18 links Boost 1.83 from bookworm-backports (see rdkit-build)
+    if [ "${PG_VERSION:?}" = "v18" ]; then \
+        echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list && \
+        apt update && \
+        BOOST_VERSION=1.83.0; \
+    else \
+        BOOST_VERSION=1.74.0; \
+    fi && \
     apt install --no-install-recommends -y \
         ca-certificates \
         gdb \
         iproute2 \
-        libboost-iostreams1.74.0 \
-        libboost-regex1.74.0 \
-        libboost-serialization1.74.0 \
-        libboost-system1.74.0 \
+        libboost-iostreams${BOOST_VERSION} \
+        libboost-regex${BOOST_VERSION} \
+        libboost-serialization${BOOST_VERSION} \
+        libboost-system${BOOST_VERSION} \
         libcurl4 \
         libevent-2.1-7 \
         libgeos-c1v5 \
