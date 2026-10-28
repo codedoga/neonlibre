@@ -698,11 +698,22 @@ COPY compute/patches/rum.patch .
 # supports v17 since https://github.com/postgrespro/rum/commit/cb1edffc57736cd2a4455f8d0feab0d69928da25
 # doesn't use releases since 1.3.13 - Sep 19, 2022
 # use latest commit from the master branch
-RUN if [ "${PG_VERSION:?}" = "v18" ]; then \
-        echo "rum has no PostgreSQL 18 support yet, skipping" && exit 0; \
-    fi; \
-    wget https://github.com/postgrespro/rum/archive/cb1edffc57736cd2a4455f8d0feab0d69928da25.tar.gz -O rum.tar.gz && \
-    echo "65e0a752e99f4c3226400c9b899f997049e93503db8bf5c8072efa136d32fd83 rum.tar.gz" | sha256sum --check && \
+# v18 needs 1.3.15 (Oct 23, 2025), the first release with PostgreSQL 18 support
+RUN case "${PG_VERSION:?}" in \
+    "v18") \
+        export RUM_URL=https://github.com/postgrespro/rum/archive/refs/tags/1.3.15.tar.gz \
+        export RUM_CHECKSUM=e79b3a67df9821bc0d86fd463dac7249f1729d9dd04f77db767e2815098247b8 \
+    ;; \
+    "v14" | "v15" | "v16" | "v17") \
+        export RUM_URL=https://github.com/postgrespro/rum/archive/cb1edffc57736cd2a4455f8d0feab0d69928da25.tar.gz \
+        export RUM_CHECKSUM=65e0a752e99f4c3226400c9b899f997049e93503db8bf5c8072efa136d32fd83 \
+    ;; \
+    *) \
+        echo "unexpected PostgreSQL version" && exit 1 \
+    ;; \
+    esac && \
+    wget ${RUM_URL} -O rum.tar.gz && \
+    echo "${RUM_CHECKSUM} rum.tar.gz" | sha256sum --check && \
     mkdir rum-src && cd rum-src && tar xzf ../rum.tar.gz --strip-components=1 -C . && \
     patch -p1 < /ext-src/rum.patch
 
