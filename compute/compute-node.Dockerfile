@@ -645,9 +645,11 @@ ARG PG_VERSION
 
 # online_advisor supports all Postgres version starting from PG14, but prior to PG17 has to be included in preload_shared_libraries
 # last release 1.0 - May 15, 2025
+# the 1.0 tag points at 920a3326 (Jun 4, 2025), which already includes the PG18 port
+# (dbfa5e72), so v18 uses the same tarball as v17
 WORKDIR /ext-src
 RUN case "${PG_VERSION:?}" in \
-    "v17") \
+    "v17" | "v18") \
         ;; \
     *) \
         echo "skipping the version of online_advistor for $PG_VERSION" && exit 0 \
