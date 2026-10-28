@@ -1,9 +1,11 @@
 name: update-postgres
 
 # Weekly: merge the newest PostgreSQL 17/18 minor release into the Neon branches of
-# <owner>/postgres, point vendor/postgres-v17/-v18 at the result, build and test the
-# images, publish them, and merge the bump into main. A merge conflict opens an issue
-# and stops; a failing build leaves the pull request open for a human.
+# <owner>/postgres, point vendor/postgres-v17/-v18 at the result on a branch, open a
+# pull request, run `build` on that branch (it builds, tests and publishes only what
+# changed) and enable auto-merge, so main takes the bump once the required ci-ok check
+# passes. A merge conflict opens an issue and stops; a failing build leaves the pull
+# request open for a human.
 #
 # Needs the secret POSTGRES_DEPLOY_KEY: an SSH key with write access to <owner>/postgres.
 
@@ -11,12 +13,17 @@ on:
   schedule:
     - cron: "41 2 * * 1"
   workflow_dispatch:
+    inputs:
+      majors:
+        description: PostgreSQL major versions to update
+        type: string
+        default: "17 18"
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
   issues: write
-  packages: write
 
 concurrency: update-postgres
 
@@ -46,12 +53,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_SSH_COMMAND: ssh -i ~/.ssh/postgres -o IdentitiesOnly=yes
+          MAJORS: ${{ inputs.majors }}
         run: |
           changed=() versions=()
           git clone --quiet --no-checkout "git@github.com:$POSTGRES_REPO.git" pg
           git -C pg remote add upstream https://github.com/postgres/postgres.git
           git -C pg fetch --quiet upstream "refs/tags/REL_17_*:refs/tags/REL_17_*" "refs/tags/REL_18_*:refs/tags/REL_18_*"
-          for major in 17 18; do
+          for major in ${MAJORS:-17 18}; do
             branch="REL_${major}_STABLE_neon"
             git -C pg checkout --quiet -B "$branch" "origin/$branch"
             latest=$(git -C pg tag -l "REL_${major}_*" | grep -E "^REL_${major}_[0-9]+$" | sort -t_ -k3 -n | tail -1)
@@ -94,24 +102,16 @@ jobs:
           pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
           if [[ -z "$pr" ]]; then
             gh pr create --head "$BRANCH" --base main --title "$(git log -1 --format=%s)" \
-              --body "Opened by the weekly update-postgres workflow. It is built, tested and merged by that workflow; if the build fails, this stays open."
+              --body "Opened by the update-postgres workflow, which runs build on this branch and merges it automatically once ci-ok passes. If the build fails, this stays open."
             pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
           fi
           echo "pr=$pr" >> "$GITHUB_OUTPUT"
-
-  build:
-    needs: bump
-    if: needs.bump.outputs.changed == 'true'
-    uses: ./.github/workflows/build.yml
-    with:
-      ref: auto/postgres-update
-      publish: true
-
-  merge:
-    needs: [bump, build]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - env:
+      - name: Build the branch and merge it once ci-ok passes
+        if: steps.bump.outputs.changed == 'true'
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge "${{ needs.bump.outputs.pr }}" --merge --delete-branch
+        run: |
+          # A run dispatched on the branch reports its checks on the branch's commit, which is
+          # what the pull request and branch protection look at. It publishes what it tested.
+          gh workflow run build.yml --ref "$BRANCH" -f publish=true
+          gh pr merge "${{ steps.pr.outputs.pr }}" --auto --merge --delete-branch
