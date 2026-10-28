@@ -451,8 +451,12 @@ RUN \
     ;; \
     esac && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/plv8.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/plcoffee.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/plls.control
+    # plcoffee and plls exist only before plv8 3.2; appending to a missing file would create a
+    # control file without default_version, i.e. an extension that cannot be installed.
+    for ext in plcoffee plls; do \
+        control=/usr/local/pgsql/share/extension/$ext.control; \
+        if [ -f "$control" ]; then echo 'trusted = true' >> "$control"; fi; \
+    done
 
 #########################################################################################
 #

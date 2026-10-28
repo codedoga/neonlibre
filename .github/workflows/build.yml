@@ -232,16 +232,22 @@ jobs:
             docker pull "$src" && docker tag "$src" "neonlibre/$name:ci"
           done
       - name: Smoke test (write, restart compute, read back through the pageserver)
+        id: smoke
         run: ci/compose-smoke.sh
+      # The remaining checks are independent: once the stack works, run all of them,
+      # so that one run reports every failure instead of stopping at the first.
       - name: CREATE EXTENSION for every extension
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         run: ci/ext-test.sh create
       - name: Extension regression tests
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         # h3-pg differs in the last digits of a float on arm64 and pg_cron's expected
         # output predates PG18's MD5 deprecation warning, so neither is run here.
         run: >
           ci/ext-test.sh run pgvector pg_ivm pg_semver pg_hint_plan plpgsql_check pgx_ulid
           pg_session_jwt pg_graphql postgis rum pgrag plv8 online_advisor
       - name: pg_duckdb with shared_preload_libraries
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         env:
           PRELOAD_EXTRA: pg_duckdb
         run: ci/duckdb-test.sh
