@@ -2175,7 +2175,10 @@ ARG PG_VERSION
 USER nonroot
 WORKDIR /home/nonroot
 
-COPY --chown=nonroot compute compute
+# Only what compute/Makefile reads, so that unrelated edits under compute/ do not rebuild this.
+COPY --chown=nonroot compute/Makefile compute/Makefile
+COPY --chown=nonroot compute/etc compute/etc
+COPY --chown=nonroot compute/jsonnet compute/jsonnet
 
 RUN make PG_VERSION="${PG_VERSION:?}" -C compute
 

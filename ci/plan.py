@@ -29,8 +29,9 @@ HEAVY = ["postgis-build", "pgrouting-build", "rdkit-build", "plv8-build", "pg_du
          "pg_tiktoken-build", "pgx_ulid-build", "pgx_ulid-pgrx12-build", "pg_session_jwt-build",
          "pg-anon-pg-build"]
 COMPUTE_DOCKERFILE = "compute/compute-node.Dockerfile"
-# The storage build copies the whole context, but nothing it builds reads these.
-STORAGE_IGNORE = ["compute", "docker-compose", "ci", ".github"]
+# Both Dockerfiles copy the whole context for their Rust builds (compute_ctl, the Neon
+# extensions, the storage binaries), and none of those read these paths.
+CONTEXT_IGNORE = ["compute", "docker-compose", "ci", ".github"]
 
 
 def check_inherited_args(dockerfile):
@@ -86,7 +87,8 @@ def main():
     for pg in PG_VERSIONS:
         args = {"PG_VERSION": f"v{pg}", "DEBIAN_VERSION": "bookworm"}
         for t in BASES + HEAVY + ["", "extension-tests"]:
-            hashes[pg, t] = input_hash(COMPUTE_DOCKERFILE, t, args, [f"vendor/postgres-v{pg}"])
+            hashes[pg, t] = input_hash(COMPUTE_DOCKERFILE, t, args, [f"vendor/postgres-v{pg}"],
+                                       ignore=CONTEXT_IGNORE)
         for arch in ARCHES:
             for t in BASES + HEAVY:
                 refs[pg, t, arch] = f"{reg}/stage:v{pg}-{t}-{hashes[pg, t]}-{arch}"
@@ -95,7 +97,7 @@ def main():
         refs[pg, "tested"] = f"{reg}/compute-v{pg}:{hashes[pg, '']}"
     storage = input_hash("Dockerfile", "", {"DEBIAN_VERSION": "bookworm"},
                          [f"vendor/postgres-v{v}" for v in ["14", "15", "16", "17", "18"]],
-                         ignore=STORAGE_IGNORE)
+                         ignore=CONTEXT_IGNORE)
     for arch in ARCHES:
         refs["storage", arch] = f"{reg}/storage:{storage}-{arch}"
     refs["storage", "tested"] = f"{reg}/storage:{storage}"

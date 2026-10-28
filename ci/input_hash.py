@@ -12,9 +12,11 @@ CI can tag images with it and skip building an image that already exists.
 <target> is a stage name, or "" for the final stage. Paths are relative to the
 repository root, which is the build context. Submodules not passed with
 --submodule are treated as empty directories, as they are in a CI checkout that
-did not initialise them. --ignore drops paths that are in the context but that
-the build provably does not read (e.g. compute/ for the storage image, whose
-`COPY . .` would otherwise make every compute change look like a storage change).
+did not initialise them. --ignore drops paths from whole-context copies
+(`COPY . .`) when the build provably does not read them there, e.g. compute/ for
+the Rust builds, which would otherwise make every Dockerfile or patch change look
+like a change to compute_ctl or the storage binaries. Explicit copies of those
+paths still count.
 """
 import argparse
 import fnmatch
@@ -76,10 +78,16 @@ def substitute(s, env):
     return VAR.sub(lambda m: env.get(m.group(1) or m.group(2), ""), s)
 
 
+def index_text(root, path):
+    """A file's content as staged in the git index, "" if it is not there. Everything is
+    read from the index, so the hash describes what is committed (or about to be)."""
+    r = subprocess.run(["git", "-C", str(root), "show", f":{path}"], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
 def dockerignore_filter(paths, root):
     rules = []
-    ignore = root / ".dockerignore"
-    for line in ignore.read_text().splitlines() if ignore.exists() else []:
+    for line in index_text(root, ".dockerignore").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
             neg = line.startswith("!")
@@ -98,7 +106,7 @@ def dockerignore_filter(paths, root):
     return keep
 
 
-def context_entries(root, submodules, ignore=()):
+def context_entries(root, submodules):
     """{path: 'mode sha'} for every file in the build context."""
     out = subprocess.run(["git", "-C", str(root), "ls-files", "-s"], check=True,
                          capture_output=True, text=True).stdout
@@ -110,8 +118,7 @@ def context_entries(root, submodules, ignore=()):
             continue  # not checked out: an empty directory in the context
         entries[path] = f"{mode} {sha}"
     keep = set(dockerignore_filter(list(entries), root))
-    ignore = tuple(i.strip("/") + "/" for i in ignore)
-    return {p: v for p, v in entries.items() if p in keep and not (p + "/").startswith(ignore)}
+    return {p: v for p, v in entries.items() if p in keep}
 
 
 def matching(entries, src):
@@ -125,7 +132,9 @@ def matching(entries, src):
 
 
 def input_hash(dockerfile, target, args, submodules, root=Path("."), ignore=()):
-    text = (root / dockerfile).read_text()
+    text = index_text(root, dockerfile)
+    if not text:
+        raise SystemExit(f"{dockerfile} is not in the git index")
     glob, stages, last = parse(text)
     env = {}
     for line in glob:
@@ -133,7 +142,9 @@ def input_hash(dockerfile, target, args, submodules, root=Path("."), ignore=()):
         if m:
             env[m.group(1)] = substitute(m.group(2) or "", env).strip('"')
     env.update(args)
-    entries = context_entries(root, set(submodules), ignore)
+    entries = context_entries(root, set(submodules))
+    prefixes = tuple(i.strip("/") + "/" for i in ignore)
+    whole = {p: v for p, v in entries.items() if not (p + "/").startswith(prefixes)}
 
     h = hashlib.sha256()
     for k in sorted(args):
@@ -155,8 +166,10 @@ def input_hash(dockerfile, target, args, submodules, root=Path("."), ignore=()):
         todo += [substitute(f, env) for f in st["froms"]]
         for srcs in st["copies"]:
             for src in srcs:
-                for p in matching(entries, substitute(src, env)):
-                    h.update(f"file {p} {entries[p]}\n".encode())
+                src = substitute(src, env)
+                pool = whole if src in (".", "./") else entries
+                for p in matching(pool, src):
+                    h.update(f"file {p} {pool[p]}\n".encode())
     return h.hexdigest()[:16]
 
 
