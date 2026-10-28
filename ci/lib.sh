@@ -24,7 +24,9 @@ cat > "${OVERRIDE}" <<'EOF'
 services:
   minio:          { ports: !reset [], image: "${MINIO_IMAGE}" }
   minio_create_buckets: { image: "${MINIO_IMAGE}" }
-  pageserver:     { ports: !reset [] }
+  pageserver:
+    ports: !reset []
+    volumes: ["${CI_CONFIGS_DIR}/pageserver:/data/.neon/"]
   safekeeper1:    { ports: !reset [] }
   safekeeper2:    { ports: !reset [] }
   safekeeper3:    { ports: !reset [] }
@@ -33,10 +35,18 @@ services:
     ports: !reset []
     volumes: ["${CI_CONFIGS_DIR}/configs:/var/db/postgres/configs/"]
 EOF
-mkdir -p "${CI_CONFIGS_DIR}/configs"
+# The containers run as their own users (pageserver: neon, compute: postgres), so the
+# directories they get must be readable, and the pageserver's writable, by anyone.
+# A copy of pageserver_config also keeps tenant data out of the checkout.
+mkdir -p "${CI_CONFIGS_DIR}/configs" "${CI_CONFIGS_DIR}/pageserver"
+cp "${ROOT}/docker-compose/pageserver_config/"{identity,pageserver}.toml "${CI_CONFIGS_DIR}/pageserver/"
+chmod 755 "${CI_CONFIGS_DIR}" "${CI_CONFIGS_DIR}/configs"
+chmod 777 "${CI_CONFIGS_DIR}/pageserver"
+chmod 666 "${CI_CONFIGS_DIR}/pageserver/"*.toml
 jq --arg extra "${PRELOAD_EXTRA:-}" '(.spec.cluster.settings[] | select(.name=="shared_preload_libraries").value)
     |= (if $extra == "" then . else . + "," + $extra end)' \
     "${ROOT}/docker-compose/compute_wrapper/var/db/postgres/configs/config.json" > "${CI_CONFIGS_DIR}/configs/config.json"
+chmod 644 "${CI_CONFIGS_DIR}/configs/config.json"
 
 die() { echo "error: $*" >&2; exit 1; }
 dc() { docker compose -f "${ROOT}/docker-compose/docker-compose.yml" -f "${OVERRIDE}" "$@"; }
