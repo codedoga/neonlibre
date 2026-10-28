@@ -273,6 +273,17 @@ jobs:
             echo "tested: $ref" >> "$GITHUB_STEP_SUMMARY"
           done
 
+  # The one check main's branch protection requires: green when every job that had work
+  # passed, whatever was skipped because there was nothing to do.
+  ci-ok:
+    needs: [plan, base, stages, compute, storage, test, promote]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS"
+
   publish:
     needs: [plan, promote]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.publish == 'true' }}
