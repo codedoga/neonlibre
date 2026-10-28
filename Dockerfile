@@ -55,8 +55,11 @@ COPY --chown=nonroot postgres.mk postgres.mk
 COPY --chown=nonroot scripts/ninstall.sh scripts/ninstall.sh
 
 ENV BUILD_TYPE=release
+# Only v17 and v18 are built and shipped. postgres_ffi's bindgen still needs the
+# headers of every version it knows, which postgres-headers-install provides cheaply.
 RUN set -e \
-    && mold -run make -j $(nproc) -s postgres
+    && mold -run make -j $(nproc) -s postgres-headers-install \
+    && mold -run make -j $(nproc) -s postgres-v17 postgres-v18
 
 # 2. Prepare cargo-chef recipe
 FROM $REPOSITORY/$IMAGE:$TAG AS plan
@@ -123,7 +126,7 @@ RUN  --mount=type=secret,uid=1000,id=SUBZERO_ACCESS_TOKEN \
       --bin neon_local \
       --bin storage_scrubber \
       --locked --release \
-    && mold -run make -j $(nproc) -s neon-pg-ext
+    && mold -run make -j $(nproc) -s neon-pg-ext-v17 neon-pg-ext-v18
 
 # Assemble the final image
 FROM $BASE_IMAGE_SHA
@@ -165,16 +168,13 @@ COPY --from=build --chown=neon:neon /home/nonroot/target/release/proxy          
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/endpoint_storage    /usr/local/bin
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/neon_local          /usr/local/bin
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/storage_scrubber    /usr/local/bin
-COPY --from=build /home/nonroot/pg_install/v14 /usr/local/v14/
-COPY --from=build /home/nonroot/pg_install/v15 /usr/local/v15/
-COPY --from=build /home/nonroot/pg_install/v16 /usr/local/v16/
 COPY --from=build /home/nonroot/pg_install/v17 /usr/local/v17/
 COPY --from=build /home/nonroot/pg_install/v18 /usr/local/v18/
 
 # Deprecated: Old deployment scripts use this tarball which contains all the Postgres binaries.
 # That's obsolete, since all the same files are also present under /usr/local/v*. But to keep the
 # old scripts working for now, create the tarball.
-RUN tar -C /usr/local -cvzf /data/postgres_install.tar.gz v14 v15 v16 v17 v18
+RUN tar -C /usr/local -cvzf /data/postgres_install.tar.gz v17 v18
 
 # By default, pageserver uses `.neon/` working directory in WORKDIR, so create one and fill it with the dummy config.
 # Now, when `docker run ... pageserver` is run, it can start without errors, yet will have some default dummy values.
