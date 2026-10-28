@@ -1836,8 +1836,8 @@ COPY compute/patches/pg_duckdb_v111.patch .
 # the 1.x SQL layout: it goes into sql/pg_duckdb--1.0.0--1.1.0.sql, the last
 # script of the 1.1.0 install chain, and install_extension() now takes
 # (TEXT, TEXT). The libduckdb -> libduckdb_pg_duckdb rename (and with it
-# duckdb_v120.patch) is not carried over: it only lets pg_duckdb coexist with
-# pg_mooncake's own libduckdb, and pg_mooncake is not built on v18.
+# duckdb_v120.patch) is not carried over: on v18 pg_duckdb-build links duckdb
+# statically instead, so pg_mooncake's own libduckdb.so is the only one installed.
 RUN case "${PG_VERSION:?}" in \
     "v18") \
         git clone --depth 1 --branch v1.1.1 https://github.com/duckdb/pg_duckdb.git pg_duckdb-src && \
@@ -1860,7 +1860,9 @@ FROM pg-build AS pg_duckdb-build
 ARG PG_VERSION
 COPY --from=pg_duckdb-src /ext-src/ /ext-src/
 WORKDIR /ext-src/pg_duckdb-src
-RUN make install -j $(getconf _NPROCESSORS_ONLN) && \
+# v18 links duckdb 1.4.3 statically so it cannot collide with pg_mooncake's libduckdb.so (1.1.3).
+RUN if [ "${PG_VERSION:?}" = "v18" ]; then export DUCKDB_BUILD=ReleaseStatic; fi && \
+    make install -j $(getconf _NPROCESSORS_ONLN) && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_duckdb.control
 
 #########################################################################################
