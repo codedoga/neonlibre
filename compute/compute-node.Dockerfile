@@ -645,18 +645,24 @@ ARG PG_VERSION
 
 # online_advisor supports all Postgres version starting from PG14, but prior to PG17 has to be included in preload_shared_libraries
 # last release 1.0 - May 15, 2025
-# the 1.0 tag points at 920a3326 (Jun 4, 2025), which already includes the PG18 port
-# (dbfa5e72), so v18 uses the same tarball as v17
+# 1.0 was ported to a PG18 beta whose ExecutorStart hook returned bool; that was
+# reverted before 18.0, so v18 uses e24652f8 (Mar 18, 2026), which drops it again.
 WORKDIR /ext-src
 RUN case "${PG_VERSION:?}" in \
-    "v17" | "v18") \
+    "v17") \
+        export ONLINE_ADVISOR_URL=https://github.com/knizhnik/online_advisor/archive/refs/tags/1.0.tar.gz \
+        export ONLINE_ADVISOR_CHECKSUM=37dcadf8f7cc8d6cc1f8831276ee245b44f1b0274f09e511e47a67738ba9ed0f \
+        ;; \
+    "v18") \
+        export ONLINE_ADVISOR_URL=https://github.com/knizhnik/online_advisor/archive/e24652f824ffac872141634394ea76320fbae4f0.tar.gz \
+        export ONLINE_ADVISOR_CHECKSUM=1894289954e3d2ed1a5e4058126e3bd30f96d2c93b92665e0f8d2b81bee6ba46 \
         ;; \
     *) \
         echo "skipping the version of online_advistor for $PG_VERSION" && exit 0 \
         ;; \
     esac && \
-	wget https://github.com/knizhnik/online_advisor/archive/refs/tags/1.0.tar.gz -O online_advisor.tar.gz && \
-    echo "37dcadf8f7cc8d6cc1f8831276ee245b44f1b0274f09e511e47a67738ba9ed0f online_advisor.tar.gz" | sha256sum --check && \
+	wget ${ONLINE_ADVISOR_URL} -O online_advisor.tar.gz && \
+    echo "${ONLINE_ADVISOR_CHECKSUM} online_advisor.tar.gz" | sha256sum --check && \
     mkdir online_advisor-src && cd online_advisor-src && tar xzf ../online_advisor.tar.gz --strip-components=1 -C .
 
 FROM pg-build AS online_advisor-build
