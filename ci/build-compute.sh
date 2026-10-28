@@ -7,7 +7,11 @@
 #   ci/build-compute.sh <pg> <arch> final <image-ref>    compute + extension-tests images, pushed
 #
 # <pg> is 17 or 18, <arch> amd64 or arm64. REGISTRY (e.g. ghcr.io/codedoga/neonlibre)
-# holds the caches under ${REGISTRY}/cache:compute-v<pg>-<arch>-<name>.
+# holds the caches under ${REGISTRY}/cache:compute-v<pg>-<arch>-<name>, and the stage jobs
+# also push each heavy stage as an image, ${REGISTRY}/stage:compute-v<pg>-<arch>-<target>-<sha>.
+# The final build takes those images as named build contexts instead of rebuilding the
+# stages: importing the stage jobs' caches did not give cache hits there in practice, and
+# rebuilding them all in one job ran the runner out of memory.
 set -euo pipefail
 
 pg="${1:?pg}"; arch="${2:?arch}"; mode="${3:?mode}"; shift 3
@@ -31,6 +35,9 @@ stage_targets() {
 STAGE_GROUPS="postgis rdkit plv8 duckdb mooncake pgrag pgrx"
 
 cache() { echo "${REGISTRY}/cache:compute-v${pg}-${arch}-$1"; }
+sha="${SHA:-$(git -C "${ROOT}" rev-parse --short=12 HEAD)}"
+# shortcut: one image per commit and stage accumulates in GHCR; add a cleanup job if that grows too large.
+stage_image() { echo "${REGISTRY}/stage:compute-v${pg}-${arch}-$1-${sha}"; }
 
 # build <target|""> <cache-name> [extra buildx args...]; "" builds the final, unnamed stage.
 build() {
@@ -38,7 +45,7 @@ build() {
     local args=(--cache-from "type=registry,ref=$(cache base)")
     if [[ "${mode}" == final ]]; then
         for g in ${STAGE_GROUPS}; do
-            for t in $(stage_targets "${g}"); do args+=(--cache-from "type=registry,ref=$(cache "${t}")"); done
+            for t in $(stage_targets "${g}"); do args+=(--build-context "${t}=docker-image://$(stage_image "${t}")"); done
         done
         args+=(--cache-from "type=registry,ref=$(cache "${name}")")
     elif [[ "${name}" != base ]]; then
@@ -59,7 +66,7 @@ build() {
 
 case "${mode}" in
 base)  build pg-build-with-cargo base ;;
-stage) for t in $(stage_targets "${1:?group}"); do build "${t}" "${t}"; done ;;
+stage) for t in $(stage_targets "${1:?group}"); do build "${t}" "${t}" --push -t "$(stage_image "${t}")"; done ;;
 final)
     ref="${1:?image ref, e.g. ghcr.io/codedoga/neonlibre/compute-v18:ci-<sha>-amd64}"
     label="org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY:-codedoga/neonlibre}"
