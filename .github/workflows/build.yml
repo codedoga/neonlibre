@@ -252,9 +252,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # One counter for all images: the highest numeric storage tag, plus one.
-          last=$(gh api --paginate "/users/${{ github.repository_owner }}/packages/container/neonlibre%2Fstorage/versions" \
-                   --jq '.[].metadata.container.tags[]' 2>/dev/null | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          # One counter for all images: the highest numeric storage tag, plus one. Any API
+          # error other than "package does not exist yet" stops here, so a number is never reused.
+          if tags=$(gh api --paginate "/users/${{ github.repository_owner }}/packages/container/neonlibre%2Fstorage/versions" \
+                      --jq '.[].metadata.container.tags[]' 2>err.txt); then
+            last=$(grep -E '^[0-9]+$' <<<"$tags" | sort -n | tail -1)
+          elif grep -q 'HTTP 404' err.txt; then
+            last=0
+          else
+            cat err.txt; exit 1
+          fi
           echo "n=$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
       - name: Tag multi-arch images
         env:
