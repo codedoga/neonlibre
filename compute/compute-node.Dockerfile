@@ -451,8 +451,12 @@ RUN \
     ;; \
     esac && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/plv8.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/plcoffee.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/plls.control
+    # plcoffee and plls exist only before plv8 3.2; appending to a missing file would create a
+    # control file without default_version, i.e. an extension that cannot be installed.
+    for ext in plcoffee plls; do \
+        control=/usr/local/pgsql/share/extension/$ext.control; \
+        if [ -f "$control" ]; then echo 'trusted = true' >> "$control"; fi; \
+    done
 
 #########################################################################################
 #
@@ -2175,7 +2179,10 @@ ARG PG_VERSION
 USER nonroot
 WORKDIR /home/nonroot
 
-COPY --chown=nonroot compute compute
+# Only what compute/Makefile reads, so that unrelated edits under compute/ do not rebuild this.
+COPY --chown=nonroot compute/Makefile compute/Makefile
+COPY --chown=nonroot compute/etc compute/etc
+COPY --chown=nonroot compute/jsonnet compute/jsonnet
 
 RUN make PG_VERSION="${PG_VERSION:?}" -C compute
 
@@ -2187,6 +2194,7 @@ RUN make PG_VERSION="${PG_VERSION:?}" -C compute
 
 FROM pg-build AS extension-tests
 ARG PG_VERSION
+ARG DEBIAN_VERSION
 # This is required for the PostGIS test
 RUN apt-get update && case $DEBIAN_VERSION in \
       bullseye) \

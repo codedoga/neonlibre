@@ -1,25 +1,27 @@
 name: build
 
-# Builds the compute images (PostgreSQL 17 and 18) and the storage image for amd64
-# and arm64, tests them on a docker-compose Neon stack, and publishes them to GHCR.
+# Builds, tests and publishes the compute images (PostgreSQL 17 and 18) and the
+# storage image, for amd64 and arm64, doing only the work a change requires.
 #
-# Published tags (see README):
-#   ghcr.io/<owner>/neonlibre/compute-v18:18.6.<build>, 18.6, 18, latest
-#   ghcr.io/<owner>/neonlibre/compute-v17:17.11.<build>, 17.11, 17, latest
-#   ghcr.io/<owner>/neonlibre/storage:<build>, latest
-# <build> is one counter shared by all images of a release, so equal numbers belong together.
+# ci/plan.py hashes the inputs of every image (Dockerfile stages, the files they
+# copy, the checked-out submodule) and looks the hashes up in GHCR:
+#   <registry>/stage:v<pg>-<stage>-<hash>-<arch>          shared bases and heavy extension stages
+#   <registry>/compute-v<pg>:<hash>-<arch>, storage:<hash>-<arch>   built images
+#   <registry>/compute-v<pg>:<hash>, storage:<hash>       ...that passed the tests
+# Whatever already exists is skipped, so e.g. a PostgreSQL 17 minor update rebuilds
+# only the v17 stages, the v17 compute image and storage, and changing one extension
+# rebuilds only its stage (if it has one) and the compute images.
+#
+# Published tags (see README): compute-v18:18.6.<n>, 18.6, 18, latest; storage:<n>, latest.
 
 on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    # Weekly rebuild: picks up Debian security updates, which the Dockerfiles apt-get at build time.
-    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the images if the tests pass
+        description: Publish version tags for images that changed
         type: boolean
         default: false
   workflow_call:
@@ -45,39 +47,45 @@ env:
   REF: ${{ inputs.ref || github.sha }}
 
 jobs:
-  meta:
+  plan:
     runs-on: ubuntu-24.04
     outputs:
-      sha: ${{ steps.v.outputs.sha }}
-      pg17: ${{ steps.v.outputs.pg17 }}
-      pg18: ${{ steps.v.outputs.pg18 }}
-      publish: ${{ steps.v.outputs.publish }}
+      base: ${{ steps.plan.outputs.base }}
+      stages: ${{ steps.plan.outputs.stages }}
+      compute: ${{ steps.plan.outputs.compute }}
+      storage: ${{ steps.plan.outputs.storage }}
+      test: ${{ steps.plan.outputs.test }}
+      images: ${{ steps.plan.outputs.images }}
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.REF }}
-      - id: v
+      - run: git submodule update --init --depth 1 vendor/postgres-v17 vendor/postgres-v18
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: python3 ci/test_input_hash.py
+      - id: plan
         run: |
-          git submodule update --init --depth 1 vendor/postgres-v17 vendor/postgres-v18
-          echo "sha=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
-          for v in 17 18; do
-            echo "pg$v=$(sed -n "s/^PACKAGE_VERSION='\(.*\)'$/\1/p" vendor/postgres-v$v/configure)" >> "$GITHUB_OUTPUT"
-          done
+          python3 ci/plan.py >> "$GITHUB_OUTPUT"
           publish=false
-          if [[ "${{ inputs.publish }}" == true ]] || [[ "${{ github.event_name }}" == schedule ]] ||
+          if [[ "${{ inputs.publish }}" == true ]] ||
              [[ "${{ github.event_name }}" == push && "${{ github.ref }}" == refs/heads/main ]]; then
             publish=true
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          cat "$GITHUB_OUTPUT"
+          { echo '```'; cat "$GITHUB_OUTPUT"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-  compute-base:
-    needs: meta
+  base:
+    needs: plan
+    if: needs.plan.outputs.base != '[]'
     strategy:
       fail-fast: false
       matrix:
-        pg: [17, 18]
-        arch: [amd64, arm64]
+        include: ${{ fromJSON(needs.plan.outputs.base) }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 340
     steps:
@@ -91,16 +99,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} base
+      - name: Build the missing bases, each on top of the previous ones
+        env:
+          TARGETS: ${{ toJSON(matrix.targets) }}
+        run: |
+          ctx=()
+          while read -r target ref build; do
+            if [[ "$build" == true ]]; then
+              ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} "$target" "$ref" "${ctx[@]}"
+            fi
+            ctx+=("$target=$ref")
+          done < <(jq -r '.[] | "\(.target) \(.ref) \(.build)"' <<<"$TARGETS")
 
-  compute-stage:
-    needs: [meta, compute-base]
+  stages:
+    needs: [plan, base]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.stages != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        pg: [17, 18]
-        arch: [amd64, arm64]
-        group: [postgis, rdkit, plv8, duckdb, mooncake, pgrag, pgrx]
+        include: ${{ fromJSON(needs.plan.outputs.stages) }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 340
     steps:
@@ -114,15 +131,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} stage ${{ matrix.group }}
+      - run: ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} ${{ matrix.target }} ${{ matrix.ref }} ${{ matrix.contexts }}
 
   compute:
-    needs: [meta, compute-stage]
+    needs: [plan, stages]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.compute != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        pg: [17, 18]
-        arch: [amd64, arm64]
+        include: ${{ fromJSON(needs.plan.outputs.compute) }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 340
     steps:
@@ -136,18 +153,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: >
-          ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} final
-          ${{ env.REGISTRY }}/compute-v${{ matrix.pg }}:ci-${{ needs.meta.outputs.sha }}-${{ matrix.arch }}
+      - name: Compute image
+        if: matrix.final != ''
         env:
-          BUILD_TAG: ${{ needs.meta.outputs.sha }}
+          BUILD_TAG: ${{ github.sha }}
+          CACHE_REF: ${{ env.REGISTRY }}/cache:compute-v${{ matrix.pg }}-${{ matrix.arch }}-final
+        run: ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} "" ${{ matrix.final }} ${{ matrix.contexts }}
+      - name: Extension test image
+        if: matrix.tests != ''
+        env:
+          CACHE_REF: ${{ env.REGISTRY }}/cache:compute-v${{ matrix.pg }}-${{ matrix.arch }}-tests
+        run: ci/build-compute.sh ${{ matrix.pg }} ${{ matrix.arch }} extension-tests ${{ matrix.tests }} ${{ matrix.contexts }}
 
   storage:
-    needs: meta
+    needs: plan
+    if: needs.plan.outputs.storage != '[]'
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        include: ${{ fromJSON(needs.plan.outputs.storage) }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 340
     steps:
@@ -172,26 +196,25 @@ jobs:
             IMAGE=build-tools
             TAG=pinned-bookworm
             DEBIAN_VERSION=bookworm
-            GIT_VERSION=${{ needs.meta.outputs.sha }}
-            BUILD_TAG=${{ needs.meta.outputs.sha }}
+            GIT_VERSION=${{ github.sha }}
+            BUILD_TAG=${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/cache:storage-${{ matrix.arch }}
           cache-to: type=registry,ref=${{ env.REGISTRY }}/cache:storage-${{ matrix.arch }},mode=max,ignore-error=true
           push: true
-          tags: ${{ env.REGISTRY }}/storage:ci-${{ needs.meta.outputs.sha }}-${{ matrix.arch }}
+          tags: ${{ matrix.ref }}
 
   test:
-    needs: [meta, compute, storage]
+    needs: [plan, compute, storage]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.test != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        pg: [17, 18]
-        arch: [amd64, arm64]
+        include: ${{ fromJSON(needs.plan.outputs.test) }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 120
     env:
       PG_VERSION: ${{ matrix.pg }}
-      CI_TAG: ci-${{ needs.meta.outputs.sha }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -201,31 +224,58 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pull and retag the images under the names docker-compose expects
+      - name: Pull the images and tag them with the names docker-compose expects
         run: |
-          for pair in "storage:neon" "compute-v$PG_VERSION:compute-node-v$PG_VERSION" \
-                      "test-extensions-v$PG_VERSION:neon-test-extensions-v$PG_VERSION"; do
-            docker pull "$REGISTRY/${pair%%:*}:$CI_TAG"
-            docker tag "$REGISTRY/${pair%%:*}:$CI_TAG" "neonlibre/${pair#*:}:ci"
+          for pair in "${{ matrix.storage }} neon" "${{ matrix.compute }} compute-node-v$PG_VERSION" \
+                      "${{ matrix.tests }} neon-test-extensions-v$PG_VERSION"; do
+            read -r src name <<<"$pair"
+            docker pull "$src" && docker tag "$src" "neonlibre/$name:ci"
           done
       - name: Smoke test (write, restart compute, read back through the pageserver)
+        id: smoke
         run: ci/compose-smoke.sh
+      # The remaining checks are independent: once the stack works, run all of them,
+      # so that one run reports every failure instead of stopping at the first.
       - name: CREATE EXTENSION for every extension
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         run: ci/ext-test.sh create
       - name: Extension regression tests
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         # h3-pg differs in the last digits of a float on arm64 and pg_cron's expected
         # output predates PG18's MD5 deprecation warning, so neither is run here.
         run: >
           ci/ext-test.sh run pgvector pg_ivm pg_semver pg_hint_plan plpgsql_check pgx_ulid
           pg_session_jwt pg_graphql postgis rum pgrag plv8 online_advisor
       - name: pg_duckdb with shared_preload_libraries
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         env:
           PRELOAD_EXTRA: pg_duckdb
         run: ci/duckdb-test.sh
 
+  promote:
+    needs: [plan, test]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag tested images with their plain hash (multi-arch)
+        env:
+          IMAGES: ${{ needs.plan.outputs.images }}
+        run: |
+          jq -r '.[] | "\(.name) \(.hash)"' <<<"$IMAGES" | while read -r name hash; do
+            ref="$REGISTRY/$name:$hash"
+            docker buildx imagetools inspect "$ref" >/dev/null 2>&1 && continue
+            docker buildx imagetools create -t "$ref" "$ref-amd64" "$ref-arm64"
+            echo "tested: $ref" >> "$GITHUB_STEP_SUMMARY"
+          done
+
   publish:
-    needs: [meta, test]
-    if: needs.meta.outputs.publish == 'true'
+    needs: [plan, promote]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     concurrency: publish
     steps:
@@ -234,37 +284,32 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Pick the next build number
-        id: n
+      - name: Add version tags to images that changed
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGES: ${{ needs.plan.outputs.images }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # One counter for all images: the highest numeric storage tag, plus one. Any API
-          # error other than "package does not exist yet" stops here, so a number is never reused.
-          if tags=$(gh api --paginate "/users/${{ github.repository_owner }}/packages/container/neonlibre%2Fstorage/versions" \
-                      --jq '.[].metadata.container.tags[]' 2>err.txt); then
-            last=$(grep -E '^[0-9]+$' <<<"$tags" | sort -n | tail -1)
-          elif grep -q 'HTTP 404' err.txt; then
-            last=0
-          else
-            cat err.txt; exit 1
-          fi
-          echo "n=$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
-      - name: Tag multi-arch images
-        env:
-          N: ${{ steps.n.outputs.n }}
-          SHA: ${{ needs.meta.outputs.sha }}
-        run: |
-          tag() {  # tag <image> <tags...>
-            local img="$1"; shift
-            local args=(); for t in "$@"; do args+=(-t "$REGISTRY/$img:$t"); done
-            docker buildx imagetools create "${args[@]}" \
-              "$REGISTRY/$img:ci-$SHA-amd64" "$REGISTRY/$img:ci-$SHA-arm64"
+          digest() { docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest; }
+          tags() {  # every tag of an image, from the registry API; any failure stops the job
+            local repo="${REGISTRY#ghcr.io/}/$1" token
+            token=$(curl -fsSL -u "${{ github.actor }}:$TOKEN" "https://ghcr.io/token?scope=repository:$repo:pull" | jq -r .token)
+            # shortcut: no pagination; fine while an image has fewer than 10000 tags.
+            curl -fsSL -H "Authorization: Bearer $token" "https://ghcr.io/v2/$repo/tags/list?n=10000" | jq -r '.tags[]?'
           }
-          for v in "17:${{ needs.meta.outputs.pg17 }}" "18:${{ needs.meta.outputs.pg18 }}"; do
-            major="${v%%:*}" full="${v#*:}"
-            tag "compute-v$major" "$full.$N" "$full" "$major" latest
+          jq -r '.[] | "\(.name) \(.hash) \(.version)"' <<<"$IMAGES" | while read -r name hash version; do
+            ref="$REGISTRY/$name:$hash"
+            if [[ "$(digest "$ref")" == "$(digest "$REGISTRY/$name:latest")" ]]; then
+              echo "$name: unchanged" >> "$GITHUB_STEP_SUMMARY"; continue
+            fi
+            all=$(tags "$name")
+            if [[ "$name" == storage ]]; then
+              n=$(( $(grep -E '^[0-9]+$' <<<"$all" | sort -n | tail -1 || echo 0) + 1 ))
+              new=("$n" latest)
+            else
+              n=$(( $(sed -nE 's/^[0-9]+\.[0-9]+\.([0-9]+)$/\1/p' <<<"$all" | sort -n | tail -1 || echo 0) + 1 ))
+              new=("$version.$n" "$version" "${version%%.*}" latest)
+            fi
+            args=(); for t in "${new[@]}"; do args+=(-t "$REGISTRY/$name:$t"); done
+            docker buildx imagetools create "${args[@]}" "$ref"
+            echo "$name: ${new[*]}" >> "$GITHUB_STEP_SUMMARY"
           done
-          tag storage "$N" latest
-          echo "published build $N" >> "$GITHUB_STEP_SUMMARY"

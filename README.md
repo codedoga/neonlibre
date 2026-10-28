@@ -43,16 +43,17 @@ All images are multi-arch (`linux/amd64`, `linux/arm64`).
 
 The numbers above are examples. The scheme is:
 
-- **compute:** `<postgres major>.<postgres minor>.<build>`. `<build>` increases
-  with every published build, including rebuilds that only pick up Debian
-  security updates. A tag is never reused.
-- **storage:** `<build>`. It has no PostgreSQL version of its own: it contains
-  both 17 and 18, for WAL redo and initdb.
-- Images with the same `<build>` were built and tested together.
+- **compute:** `<postgres major>.<postgres minor>.<n>`, where `<n>` counts the
+  published builds of that image. A new number is published only when the image
+  actually changed, and a tag is never reused.
+- **storage:** `<n>`, counted the same way. It has no PostgreSQL version of its
+  own: it contains both 17 and 18, for WAL redo and initdb.
+- Every image is also tagged with the hash of its inputs (`<hash>`), once it has
+  passed the tests. That is how CI knows what it does not need to build again.
 
 This is ordinary semver as far as Dependabot is concerned. A PostgreSQL minor
-release shows up as a minor update (`18.6.42` → `18.7.43`), and a rebuild as a
-patch update (`18.6.42` → `18.6.43`). Each major version is its own image, so
+release shows up as a minor update (`18.6.42` → `18.7.43`), and any other change
+to the image as a patch update (`18.6.42` → `18.6.43`). Each major version is its own image, so
 Dependabot never proposes 17 → 18. Pin the full tag and let Dependabot move it:
 
 ```yaml
@@ -77,11 +78,20 @@ images. [docker-compose/](docker-compose) shows how they fit together.
 | Workflow | When | What |
 |---|---|---|
 | [update-postgres](.github/workflows/update-postgres.yml) | weekly | Merges the newest `REL_17_*` / `REL_18_*` release tag into the Neon branches of `codedoga/postgres`, bumps the submodules, then builds, tests and publishes. On a merge conflict it opens an issue instead. |
-| [build](.github/workflows/build.yml) | weekly, on every push to `main`, and on pull requests | Builds every image and runs the tests below. Scheduled runs and pushes to `main` publish; pull requests do not. The weekly run picks up Debian security updates. |
+| [build](.github/workflows/build.yml) | on every push to `main`, and on pull requests | Builds and tests only what the change affects (below). Pushes to `main` publish the images that changed; pull requests do not. |
 | [tests](.github/workflows/pg-tests.yml) | manual | Neon's full Python regression suite, sharded. It takes hours. |
 
+`build` decides what to do from [ci/plan.py](ci/plan.py), which hashes the inputs
+of every image: the Dockerfile stages it depends on, the files they copy and the
+PostgreSQL submodule, and looks the hashes up in the registry. Anything already
+built is skipped. A PostgreSQL 17 minor update rebuilds only the v17 images and
+storage. Changing one extension rebuilds its own stage, if it has one, and the
+compute images, and leaves storage alone. A change to the CI scripts alone
+rebuilds nothing.
+
 Extension versions are not updated automatically, because an extension bump can
-break compatibility. Change them in
+break compatibility. Debian packages are updated when a security report calls for
+it, not on a schedule. Change them in
 [compute/compute-node.Dockerfile](compute/compute-node.Dockerfile) and let CI test
 the result.
 
