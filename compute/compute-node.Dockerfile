@@ -1658,36 +1658,50 @@ FROM build-deps AS pg_mooncake-src
 ARG PG_VERSION
 WORKDIR /ext-src
 COPY compute/patches/duckdb_v113.patch .
-# pg_mooncake 0.1.2 (Feb 2025) is still the latest release, and it does not
-# build against PostgreSQL 18. Its columnstore table AM uses
-# TupleDescData.attrs, which v18 replaced with compact_attrs, and its
-# TableAmRoutine initializer carries more members than v18's struct after the
-# bitmap heap scan rework:
-#   columnstore_handler.cpp:147: 'struct TupleDescData' has no member named 'attrs'
-#   columnstore_handler.cpp:295: too many initializers for 'const TableAmRoutine'
-# Porting a third-party table AM across that change is out of scope, and
-# pg_mooncake is gated behind neon.unstable_extensions anyway.
-RUN if [ "${PG_VERSION:?}" = "v18" ]; then \
-        echo "pg_mooncake has no PostgreSQL 18 support, skipping" && exit 0; \
-    fi; \
-    wget https://github.com/Mooncake-Labs/pg_mooncake/releases/download/v0.1.2/pg_mooncake-0.1.2.tar.gz -O pg_mooncake.tar.gz && \
-    echo "4550473784fcdd2e1e18062bc01eb9c286abd27cdf5e11a4399be6c0a426ba90 pg_mooncake.tar.gz" | sha256sum --check && \
-    mkdir pg_mooncake-src && cd pg_mooncake-src && tar xzf ../pg_mooncake.tar.gz --strip-components=1 -C . && \
+COPY compute/patches/pg_mooncake_v013_pg18.patch .
+COPY compute/patches/pg_mooncake_ruleutils_pg18.patch .
+# pg_mooncake 0.1.x has no PostgreSQL 18 support, and the v0.2 rewrite on main
+# (which does support 18) is a different extension: a pgrx sub-extension of
+# pg_duckdb that mirrors heap tables into Iceberg through a moonlink
+# background worker and needs wal_level=logical. So v18 stays on the 0.1
+# series with a local port of v0.1.3, the last 0.1 tag (Dec 2025, no release
+# tarball, so duckdb v1.1.3 -- the commit its submodule pins -- is fetched
+# separately). pg_mooncake_v013_pg18.patch covers TupleDescData.attrs ->
+# TupleDescAttr(), the dropped scan_bitmap_next_block callback in both table
+# AMs, POSIX_COLLATION_OID losing its symbol, and the explain_format.h split.
+# The vendored pg_duckdb ruleutils has no 18 copy; pg_mooncake-build derives
+# it from our own ruleutils.c with pg_mooncake_ruleutils_pg18.patch.
+RUN case "${PG_VERSION:?}" in \
+    "v18") \
+        wget https://github.com/Mooncake-Labs/pg_mooncake/archive/refs/tags/v0.1.3.tar.gz -O pg_mooncake.tar.gz && \
+        echo "29ef50fa8ce38c9c1769ea2554f019dd66f848381871fea226520b8011c2f344 pg_mooncake.tar.gz" | sha256sum --check && \
+        wget https://github.com/duckdb/duckdb/archive/refs/tags/v1.1.3.tar.gz -O duckdb.tar.gz && \
+        echo "2aea0af898ad753fee82b776fea1bf78ccbc9648986e7f7a87372df5e74cdb98 duckdb.tar.gz" | sha256sum --check && \
+        mkdir pg_mooncake-src && cd pg_mooncake-src && tar xzf ../pg_mooncake.tar.gz --strip-components=1 -C . && \
+        tar xzf ../duckdb.tar.gz --strip-components=1 -C third_party/duckdb && \
+        patch -p1 < /ext-src/pg_mooncake_v013_pg18.patch \
+        ;; \
+    *) \
+        wget https://github.com/Mooncake-Labs/pg_mooncake/releases/download/v0.1.2/pg_mooncake-0.1.2.tar.gz -O pg_mooncake.tar.gz && \
+        echo "4550473784fcdd2e1e18062bc01eb9c286abd27cdf5e11a4399be6c0a426ba90 pg_mooncake.tar.gz" | sha256sum --check && \
+        mkdir pg_mooncake-src && cd pg_mooncake-src && tar xzf ../pg_mooncake.tar.gz --strip-components=1 -C . \
+        ;; \
+    esac && \
     cd third_party/duckdb && patch -p1 < /ext-src/duckdb_v113.patch && cd ../.. && \
     echo "make -f pg_mooncake-src/Makefile.build installcheck TEST_DIR=./test SQL_DIR=./sql SRC_DIR=./src" > neon-test.sh && \
     chmod a+x neon-test.sh
 
 FROM rust-extensions-build AS pg_mooncake-build
+ARG PG_VERSION
 COPY --from=pg_mooncake-src /ext-src/ /ext-src/
-# pg_mooncake-src produces nothing on the versions where pg_mooncake is skipped
-# (v18), so guard on the source directory the way rum-build and plv8-build do.
-WORKDIR /ext-src
-RUN if [ -d pg_mooncake-src ]; then \
-        cd pg_mooncake-src && \
-        make release -j $(getconf _NPROCESSORS_ONLN) && \
-        make install -j $(getconf _NPROCESSORS_ONLN) && \
-        echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_mooncake.control; \
-    fi
+WORKDIR /ext-src/pg_mooncake-src
+RUN if [ "${PG_VERSION:?}" = "v18" ]; then \
+        cp /postgres/src/backend/utils/adt/ruleutils.c src/pgduckdb/vendor/pg_ruleutils_18.c && \
+        patch src/pgduckdb/vendor/pg_ruleutils_18.c < /ext-src/pg_mooncake_ruleutils_pg18.patch; \
+    fi && \
+    make release -j $(getconf _NPROCESSORS_ONLN) && \
+    make install -j $(getconf _NPROCESSORS_ONLN) && \
+    echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_mooncake.control
 
 #########################################################################################
 #
