@@ -540,11 +540,12 @@ pgrx refuses to build against a fork that reports a custom ABI name, which Neon'
 Postgres does.
 
 **Not built on v18:** `rum` (no upstream support — its `PostingItem` conflicts
-with core), `plv8` (deprecated), `pg_mooncake`, `pg_duckdb`, `online_advisor`.
+with core), `plv8` (deprecated), `pg_mooncake`, `online_advisor`. (`pg_duckdb`
+was on this list until it was bumped, see below.)
 Neon does not ship the first three on PG18 either. `pgrag` was removed outright
 in its own commit.
 
-`pg_duckdb` is the one worth revisiting, because it is a version bump rather
+`pg_duckdb` needed only a version bump rather
 than a port. The pinned v0.3.1 (Feb 2025) predates v18 and fails on four
 separate API changes:
 
@@ -560,8 +561,9 @@ wrong: v18 kept the POSIX collation (OID 951 is still in `pg_collation.dat`) and
 only dropped its `oid_symbol`, so substituting `C_COLLATION_OID` (OID 950) would
 change behaviour rather than restore it.
 
-pg_duckdb **v1.1.1 supports 14..18**, so the fix is to bump. It is not a drop-in,
-though — both local patches assume v0.3.1:
+pg_duckdb **v1.1.1 supports 14..18**, so v18 bumps to it (vendoring duckdb
+1.4.3); v14..v17 stay on v0.3.1 with their existing patches. Both local patches
+assumed v0.3.1:
 
 - `pg_duckdb_v031.patch` renames `libduckdb` to `libduckdb_pg_duckdb` so
   pg_duckdb (duckdb 1.2.0) and pg_mooncake (duckdb 1.1.3) can coexist in one
@@ -571,8 +573,12 @@ though — both local patches assume v0.3.1:
 - `duckdb_v120.patch` renames the CMake target inside the vendored duckdb 1.2.0,
   which 1.1.1 does not vendor.
 
-Since pg_mooncake is already skipped on v18, the symbol-collision that motivates
-the rename does not arise there, which should simplify the rebase.
+The v18 replacement, `pg_duckdb_v111.patch`, carries only the GRANTs, appended
+to `pg_duckdb--1.0.0--1.1.0.sql` (the last script of the 1.1.0 install chain),
+with `install_extension` now `(TEXT, TEXT)`. The rename is dropped: pg_mooncake
+is skipped on v18, so there is no second `libduckdb` to collide with. The clone
+is pinned by checking the tag's commit (`7b0db373…`), since there is no tarball
+to sha256.
 
 `pg_mooncake` earns its place on that list from two v18 API breaks in its
 columnstore table AM, which only surface once the stage gets far enough to

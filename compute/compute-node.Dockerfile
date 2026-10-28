@@ -1795,45 +1795,45 @@ ARG PG_VERSION
 WORKDIR /ext-src
 COPY compute/patches/pg_duckdb_v031.patch .
 COPY compute/patches/duckdb_v120.patch .
+COPY compute/patches/pg_duckdb_v111.patch .
 # pg_duckdb build requires source dir to be a git repo to get submodules
 # allow {privileged_role_name} to execute some functions that in pg_duckdb are available to superuser only:
 # - extension management function duckdb.install_extension()
 # - access to duckdb.extensions table and its sequence
 #
-# v0.3.1 predates PostgreSQL 18 and hits four separate API changes:
-#   POSIX_COLLATION_OID / ExplainPropertyText / MemoryContextReset not declared,
-#   and "cannot convert 'Node*' to 'Query*' in assignment".
-# pg_duckdb v1.1.1 does support 14..18, so this is a version bump rather than a
-# port -- but it is not a drop-in. Both local patches would need rebasing:
-#   - pg_duckdb_v031.patch renames libduckdb -> libduckdb_pg_duckdb so that
-#     pg_duckdb (duckdb 1.2.0) and pg_mooncake (duckdb 1.1.3) can coexist, and
-#     appends the neon.privileged_role_name GRANTs to
-#     sql/pg_duckdb--0.2.0--0.3.0.sql, a file the 1.x SQL layout replaces with
-#     pg_duckdb--1.0.0.sql plus pg_duckdb--1.0.0--1.1.0.sql.
-#   - duckdb_v120.patch renames the CMake target in the vendored duckdb 1.2.0,
-#     which 1.1.1 does not vendor.
-# Left for a follow-up; each build iteration compiles duckdb from source.
-RUN if [ "${PG_VERSION:?}" = "v18" ]; then \
-        echo "pg_duckdb 0.3.1 has no PostgreSQL 18 support, skipping" && exit 0; \
-    fi; \
-    git clone --depth 1 --branch v0.3.1 https://github.com/duckdb/pg_duckdb.git pg_duckdb-src && \
-    cd pg_duckdb-src && \
-    git submodule update --init --recursive && \
-    patch -p1 < /ext-src/pg_duckdb_v031.patch && \
-    cd third_party/duckdb && \
-    patch -p1 < /ext-src/duckdb_v120.patch
+# v0.3.1 predates PostgreSQL 18, so v18 uses v1.1.1 (supports 14..18, vendors
+# duckdb 1.4.3). A git checkout has no tarball to pin a sha256 on, so the clone
+# is checked against the commit the tag points at instead.
+# pg_duckdb_v111.patch is the GRANT half of pg_duckdb_v031.patch rebased onto
+# the 1.x SQL layout: it goes into sql/pg_duckdb--1.0.0--1.1.0.sql, the last
+# script of the 1.1.0 install chain, and install_extension() now takes
+# (TEXT, TEXT). The libduckdb -> libduckdb_pg_duckdb rename (and with it
+# duckdb_v120.patch) is not carried over: it only lets pg_duckdb coexist with
+# pg_mooncake's own libduckdb, and pg_mooncake is not built on v18.
+RUN case "${PG_VERSION:?}" in \
+    "v18") \
+        git clone --depth 1 --branch v1.1.1 https://github.com/duckdb/pg_duckdb.git pg_duckdb-src && \
+        cd pg_duckdb-src && \
+        test "$(git rev-parse HEAD)" = "7b0db3737a1ab2dfb182b742322426e3c4b500af" && \
+        git submodule update --init --recursive && \
+        patch -p1 < /ext-src/pg_duckdb_v111.patch \
+    ;; \
+    *) \
+        git clone --depth 1 --branch v0.3.1 https://github.com/duckdb/pg_duckdb.git pg_duckdb-src && \
+        cd pg_duckdb-src && \
+        git submodule update --init --recursive && \
+        patch -p1 < /ext-src/pg_duckdb_v031.patch && \
+        cd third_party/duckdb && \
+        patch -p1 < /ext-src/duckdb_v120.patch \
+    ;; \
+    esac
 
 FROM pg-build AS pg_duckdb-build
 ARG PG_VERSION
 COPY --from=pg_duckdb-src /ext-src/ /ext-src/
-# pg_duckdb-src produces nothing on the versions where pg_duckdb is skipped
-# (v18), so guard on the source directory the way rum-build and plv8-build do.
-WORKDIR /ext-src
-RUN if [ -d pg_duckdb-src ]; then \
-        cd pg_duckdb-src && \
-        make install -j $(getconf _NPROCESSORS_ONLN) && \
-        echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_duckdb.control; \
-    fi
+WORKDIR /ext-src/pg_duckdb-src
+RUN make install -j $(getconf _NPROCESSORS_ONLN) && \
+    echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_duckdb.control
 
 #########################################################################################
 #
