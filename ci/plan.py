@@ -16,7 +16,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from input_hash import input_hash
+from input_hash import input_hash, parse
 
 PG_VERSIONS = ["17", "18"]
 ARCHES = ["amd64", "arm64"]
@@ -33,6 +33,41 @@ COMPUTE_DOCKERFILE = "compute/compute-node.Dockerfile"
 STORAGE_IGNORE = ["compute", "docker-compose", "ci", ".github"]
 
 
+def check_inherited_args(dockerfile):
+    """Fail if a stage relies on an ARG it inherits through a stage that CI replaces with
+    a prebuilt image: BuildKit does not see that ARG then, and the build fails late."""
+    _, stages, _ = parse(Path(dockerfile).read_text())
+    replaced = set(BASES + HEAVY)
+
+    def args(lines, used):
+        found = set()
+        for line in lines:
+            if used and not re.match(r"\s*ARG\s", line):
+                found |= {a or b for a, b in re.findall(r"\$\{([A-Za-z_]\w*)[^}]*\}|\$([A-Za-z_]\w*)", line)}
+            elif not used:
+                found |= set(re.findall(r"^\s*ARG\s+([A-Za-z_]\w*)", line))
+        return found
+
+    problems = []
+    for name, st in stages.items():
+        chain, parent = [name], st["parent"]
+        while parent in stages and parent not in replaced:
+            chain.append(parent)
+            parent = stages[parent]["parent"]
+        if parent not in replaced:
+            continue
+        inherited, p = set(), parent
+        while p in stages:
+            inherited |= args(stages[p]["lines"], used=False)
+            p = stages[p]["parent"]
+        for s in chain:
+            missing = (args(stages[s]["lines"][1:], used=True) & inherited) - args(stages[s]["lines"], used=False)
+            if missing:
+                problems.append(f"{s}: uses {sorted(missing)} inherited through {parent}; declare it with ARG")
+    if problems:
+        raise SystemExit("\n".join(problems))
+
+
 def exists(ref):
     return subprocess.run(["docker", "buildx", "imagetools", "inspect", ref],
                           capture_output=True).returncode == 0
@@ -44,6 +79,7 @@ def pg_full_version(pg):
 
 
 def main():
+    check_inherited_args(COMPUTE_DOCKERFILE)
     reg = os.environ["REGISTRY"]
     refs = {}  # key -> image ref; checked against the registry in one go below
     hashes = {}

@@ -2187,6 +2187,7 @@ RUN make PG_VERSION="${PG_VERSION:?}" -C compute
 
 FROM pg-build AS extension-tests
 ARG PG_VERSION
+ARG DEBIAN_VERSION
 # This is required for the PostGIS test
 RUN apt-get update && case $DEBIAN_VERSION in \
       bullseye) \
