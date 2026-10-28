@@ -1,0 +1,230 @@
+--- a/src/backend/utils/adt/ruleutils.c
++++ b/src/pgduckdb/vendor/pg_ruleutils_18.c
+@@ -1,20 +1,22 @@
+ /*-------------------------------------------------------------------------
+  *
+- * ruleutils.c
++ * pg_ruleutils_18.c
+  *	  Functions to convert stored expressions/querytrees back to
+  *	  source text
+  *
+  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+  * Portions Copyright (c) 1994, Regents of the University of California
+  *
+- *
+- * IDENTIFICATION
+- *	  src/backend/utils/adt/ruleutils.c
+- *
+  *-------------------------------------------------------------------------
+  */
+ #include "postgres.h"
+ 
++#if PG_VERSION_NUM >= 180000 && PG_VERSION_NUM < 190000
++
++#pragma GCC diagnostic ignored "-Wshadow" // ignore any compiler warnings
++#pragma GCC diagnostic ignored "-Wsign-compare" // ignore any compiler warnings
++#pragma GCC diagnostic ignored "-Wunused-parameter" // ignore any compiler warnings
++
+ #include <ctype.h>
+ #include <unistd.h>
+ #include <fcntl.h>
+@@ -50,6 +52,7 @@
+ #include "optimizer/optimizer.h"
+ #include "parser/parse_agg.h"
+ #include "parser/parse_func.h"
++#include "parser/parse_node.h"
+ #include "parser/parse_oper.h"
+ #include "parser/parse_relation.h"
+ #include "parser/parser.h"
+@@ -65,12 +68,16 @@
+ #include "utils/lsyscache.h"
+ #include "utils/partcache.h"
+ #include "utils/rel.h"
+-#include "utils/ruleutils.h"
++#include "pgduckdb/vendor/pg_ruleutils.h"
+ #include "utils/snapmgr.h"
+ #include "utils/syscache.h"
+ #include "utils/typcache.h"
+ #include "utils/varlena.h"
+ #include "utils/xml.h"
++
++#include "pgduckdb/pgduckdb_ruleutils.h"
++
++#include "pgduckdb/utility/rename_ruleutils.h"
+ 
+ /* ----------
+  * Pretty formatting constants
+@@ -92,7 +99,7 @@
+ /* Standard conversion of a "bool pretty" option to detailed flags */
+ #define GET_PRETTY_FLAGS(pretty) \
+ 	((pretty) ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) \
+-	 : PRETTYFLAG_INDENT)
++	 : 0)
+ 
+ /* Default line length for pretty-print wrapping: 0 means wrap always */
+ #define WRAP_COLUMN_DEFAULT		0
+@@ -525,8 +532,6 @@
+ static Node *processIndirection(Node *node, deparse_context *context);
+ static void printSubscripts(SubscriptingRef *sbsref, deparse_context *context);
+ static char *get_relation_name(Oid relid);
+-static char *generate_relation_name(Oid relid, List *namespaces);
+-static char *generate_qualified_relation_name(Oid relid);
+ static char *generate_function_name(Oid funcid, int nargs,
+ 									List *argnames, Oid *argtypes,
+ 									bool has_variadic, bool *use_variadic_p,
+@@ -7009,6 +7014,16 @@
+ 		if (tle->resjunk)
+ 			continue;			/* ignore junk entries */
+ 
++		/*
++		 * If it's an INSERT ... SELECT or multi-row VALUES, the entry
++		 * with the default value is ignored unless it is specified
++		 */
++		if (values_rte || select_rte)
++		{
++			if (!pgduckdb_is_not_default_expr((Node *) tle, NULL))
++				continue;
++		}
++
+ 		appendStringInfoString(buf, sep);
+ 		sep = ", ";
+ 
+@@ -13137,103 +13152,6 @@
+ 	if (!relname)
+ 		elog(ERROR, "cache lookup failed for relation %u", relid);
+ 	return relname;
+-}
+-
+-/*
+- * generate_relation_name
+- *		Compute the name to display for a relation specified by OID
+- *
+- * The result includes all necessary quoting and schema-prefixing.
+- *
+- * If namespaces isn't NIL, it must be a list of deparse_namespace nodes.
+- * We will forcibly qualify the relation name if it equals any CTE name
+- * visible in the namespace list.
+- */
+-static char *
+-generate_relation_name(Oid relid, List *namespaces)
+-{
+-	HeapTuple	tp;
+-	Form_pg_class reltup;
+-	bool		need_qual;
+-	ListCell   *nslist;
+-	char	   *relname;
+-	char	   *nspname;
+-	char	   *result;
+-
+-	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+-	if (!HeapTupleIsValid(tp))
+-		elog(ERROR, "cache lookup failed for relation %u", relid);
+-	reltup = (Form_pg_class) GETSTRUCT(tp);
+-	relname = NameStr(reltup->relname);
+-
+-	/* Check for conflicting CTE name */
+-	need_qual = false;
+-	foreach(nslist, namespaces)
+-	{
+-		deparse_namespace *dpns = (deparse_namespace *) lfirst(nslist);
+-		ListCell   *ctlist;
+-
+-		foreach(ctlist, dpns->ctes)
+-		{
+-			CommonTableExpr *cte = (CommonTableExpr *) lfirst(ctlist);
+-
+-			if (strcmp(cte->ctename, relname) == 0)
+-			{
+-				need_qual = true;
+-				break;
+-			}
+-		}
+-		if (need_qual)
+-			break;
+-	}
+-
+-	/* Otherwise, qualify the name if not visible in search path */
+-	if (!need_qual)
+-		need_qual = !RelationIsVisible(relid);
+-
+-	if (need_qual)
+-		nspname = get_namespace_name_or_temp(reltup->relnamespace);
+-	else
+-		nspname = NULL;
+-
+-	result = quote_qualified_identifier(nspname, relname);
+-
+-	ReleaseSysCache(tp);
+-
+-	return result;
+-}
+-
+-/*
+- * generate_qualified_relation_name
+- *		Compute the name to display for a relation specified by OID
+- *
+- * As above, but unconditionally schema-qualify the name.
+- */
+-static char *
+-generate_qualified_relation_name(Oid relid)
+-{
+-	HeapTuple	tp;
+-	Form_pg_class reltup;
+-	char	   *relname;
+-	char	   *nspname;
+-	char	   *result;
+-
+-	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+-	if (!HeapTupleIsValid(tp))
+-		elog(ERROR, "cache lookup failed for relation %u", relid);
+-	reltup = (Form_pg_class) GETSTRUCT(tp);
+-	relname = NameStr(reltup->relname);
+-
+-	nspname = get_namespace_name_or_temp(reltup->relnamespace);
+-	if (!nspname)
+-		elog(ERROR, "cache lookup failed for namespace %u",
+-			 reltup->relnamespace);
+-
+-	result = quote_qualified_identifier(nspname, relname);
+-
+-	ReleaseSysCache(tp);
+-
+-	return result;
+ }
+ 
+ /*
+@@ -13272,6 +13190,10 @@
+ 	Oid			p_vatype;
+ 	Oid		   *p_true_typeids;
+ 	bool		force_qualify = false;
++
++	result = pgduckdb_function_name(funcid);
++	if (result)
++		return result;
+ 
+ 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+ 	if (!HeapTupleIsValid(proctup))
+@@ -13707,3 +13629,23 @@
+ 
+ 	return buf->data;
+ }
++
++/*
++ * get_list_partvalue_string
++ *		A C string representation of one list partition value
++ */
++char *
++get_list_partvalue_string(Const *val)
++{
++	deparse_context context;
++	StringInfo	buf = makeStringInfo();
++
++	memset(&context, 0, sizeof(deparse_context));
++	context.buf = buf;
++
++	get_const_expr(val, &context, -1);
++
++	return buf->data;
++}
++
++#endif
