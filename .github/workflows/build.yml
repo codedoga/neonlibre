@@ -35,6 +35,11 @@ permissions:
   contents: read
   packages: write
 
+# One build per ref at a time; a second one waits instead of duplicating the work.
+concurrency:
+  group: build-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io/${{ github.repository_owner }}/neonlibre
   REF: ${{ inputs.ref || github.sha }}
