@@ -1,0 +1,117 @@
+name: update-postgres
+
+# Weekly: merge the newest PostgreSQL 17/18 minor release into the Neon branches of
+# <owner>/postgres, point vendor/postgres-v17/-v18 at the result, build and test the
+# images, publish them, and merge the bump into main. A merge conflict opens an issue
+# and stops; a failing build leaves the pull request open for a human.
+#
+# Needs the secret POSTGRES_DEPLOY_KEY: an SSH key with write access to <owner>/postgres.
+
+on:
+  schedule:
+    - cron: "41 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  packages: write
+
+concurrency: update-postgres
+
+env:
+  BRANCH: auto/postgres-update
+  POSTGRES_REPO: ${{ github.repository_owner }}/postgres
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+      pr: ${{ steps.pr.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure git and the deploy key
+        env:
+          KEY: ${{ secrets.POSTGRES_DEPLOY_KEY }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/postgres && chmod 600 ~/.ssh/postgres
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Merge new minor releases and bump the submodules
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_SSH_COMMAND: ssh -i ~/.ssh/postgres -o IdentitiesOnly=yes
+        run: |
+          changed=() versions=()
+          git clone --quiet --no-checkout "git@github.com:$POSTGRES_REPO.git" pg
+          git -C pg remote add upstream https://github.com/postgres/postgres.git
+          git -C pg fetch --quiet upstream "refs/tags/REL_17_*:refs/tags/REL_17_*" "refs/tags/REL_18_*:refs/tags/REL_18_*"
+          for major in 17 18; do
+            branch="REL_${major}_STABLE_neon"
+            git -C pg checkout --quiet -B "$branch" "origin/$branch"
+            latest=$(git -C pg tag -l "REL_${major}_*" | grep -E "^REL_${major}_[0-9]+$" | sort -t_ -k3 -n | tail -1)
+            if ! git -C pg merge-base --is-ancestor "$latest" HEAD; then
+              if ! git -C pg merge --no-edit -m "Merge $latest into $branch" "$latest"; then
+                conflicts=$(git -C pg diff --name-only --diff-filter=U)
+                # shellcheck disable=SC2016 # backticks are Markdown in the issue body
+                gh issue create --title "PostgreSQL $latest does not merge cleanly into $branch" \
+                  --body "$(printf 'The weekly update could not merge `%s` into `%s` of %s.\n\nConflicting files:\n\n```\n%s\n```\n\nResolve the merge by hand in %s, push the branch, and re-run this workflow.' \
+                    "$latest" "$branch" "$POSTGRES_REPO" "$conflicts" "$POSTGRES_REPO")"
+                exit 1
+              fi
+              git -C pg push --quiet origin "HEAD:$branch"
+            fi
+            tip=$(git -C pg rev-parse HEAD)
+            pinned=$(git ls-tree HEAD "vendor/postgres-v$major" | awk '{print $3}')
+            if [[ "$tip" != "$pinned" ]]; then
+              git update-index --cacheinfo "160000,$tip,vendor/postgres-v$major"
+              changed+=("v$major")
+              versions+=("$(git -C pg show HEAD:configure | sed -n "s/^PACKAGE_VERSION='\(.*\)'$/\1/p")")
+            fi
+          done
+          rm -rf pg
+          if ((${#changed[@]})); then
+            git checkout -B "$BRANCH"
+            git commit -m "postgres: update to ${versions[*]}"
+            git push --force origin "$BRANCH"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "PostgreSQL ${versions[*]}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "PostgreSQL 17 and 18 are up to date" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Open or update the pull request
+        id: pr
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [[ -z "$pr" ]]; then
+            gh pr create --head "$BRANCH" --base main --title "$(git log -1 --format=%s)" \
+              --body "Opened by the weekly update-postgres workflow. It is built, tested and merged by that workflow; if the build fails, this stays open."
+            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: bump
+    if: needs.bump.outputs.changed == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: auto/postgres-update
+      publish: true
+
+  merge:
+    needs: [bump, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "${{ needs.bump.outputs.pr }}" --merge --delete-branch

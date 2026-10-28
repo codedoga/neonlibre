@@ -20,10 +20,8 @@ name: tests
 #    safekeeper and a compute. One build job feeds all the shards so the
 #    (expensive) Postgres + Rust build happens once.
 
+# Manual only: the full suite takes hours. Routine builds run the image tests in build.yml.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
   workflow_dispatch:
     inputs:
       pg_version:
