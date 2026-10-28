@@ -387,24 +387,30 @@ COPY compute/patches/plv8* .
 #
 # Use new version only for v17
 # because since v3.2, plv8 doesn't include plcoffee and plls extensions
+#
+# plv8 3.2.4 (Jul 2025) is the first release that supports v18; 3.2.5 (Sep 2026)
+# adds PG_MODULE_MAGIC_EXT on v18. Both bundle the same v8-cmake commit as 3.2.3.
+# The tag is cloned (see above), so pin the commit it must resolve to.
 RUN case "${PG_VERSION:?}" in \
+    "v18") \
+        export PLV8_TAG=v3.2.5 \
+        export PLV8_COMMIT=094d10827d4626d0139ab296905fdada8ebe5b74 \
+    ;; \
     "v17") \
         export PLV8_TAG=v3.2.3 \
     ;; \
     "v14" | "v15" | "v16") \
         export PLV8_TAG=v3.1.10 \
     ;; \
-    "v18") \
-        echo "plv8 is deprecated and not built for PostgreSQL 18, skipping" && exit 0 \
-    ;; \
     *) \
         echo "unexpected PostgreSQL version" && exit 1 \
     ;; \
     esac && \
     git clone --recurse-submodules --depth 1 --branch ${PLV8_TAG} https://github.com/plv8/plv8.git plv8-src && \
+    if [ -n "${PLV8_COMMIT:-}" ]; then [ "$(git -C plv8-src rev-parse HEAD)" = "${PLV8_COMMIT}" ]; fi && \
     tar -czf plv8.tar.gz --exclude .git plv8-src && \
     cd plv8-src && \
-    if [[ "${PG_VERSION:?}" < "v17" ]]; then patch -p1 < /ext-src/plv8_v3.1.10.patch; else patch -p1 < /ext-src/plv8_v3.2.3.patch; fi
+    patch -p1 < /ext-src/plv8_${PLV8_TAG}.patch
 
 # Step 1: Build the vendored V8 engine. It doesn't depend on PostgreSQL, so use
 # 'build-deps' as the base. This enables caching and avoids unnecessary rebuilds.
@@ -417,7 +423,7 @@ RUN apt update && \
     ninja-build python3-dev libncurses5 binutils clang \
     && apt clean && rm -rf /var/lib/apt/lists/*
 COPY --from=plv8-src /ext-src/ /ext-src/
-# plv8-src produces nothing on the versions where plv8 is skipped (v18).
+# The Makefile guard keeps this stage a no-op should plv8-src ever skip a version.
 RUN if [ -f Makefile ]; then make DOCKER=1 -j $(getconf _NPROCESSORS_ONLN) v8; fi
 
 # Step 2: Build the PostgreSQL-dependent parts
