@@ -307,6 +307,9 @@ jobs:
                      hot_standby gin_redo branching clog_truncate subxacts; do
               FILES+=("test_runner/regress/test_$t.py")
             done
+            # Its pgbench -i -s10 ("about 15s on SSD") runs past the 120s statement_timeout
+            # on a GitHub-hosted runner with a debug build.
+            SELECT=(--deselect test_runner/regress/test_hot_standby.py::test_hot_standby_feedback)
             WORKERS=2
           else
             mapfile -t FILES < <(printf '%s\n' test_runner/regress/test_*.py \
