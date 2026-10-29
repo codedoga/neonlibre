@@ -1,6 +1,6 @@
 name: build
 
-# Builds, tests and publishes the compute images (PostgreSQL 17 and 18) and the
+# Builds, tests and publishes the compute image (PostgreSQL 18) and the
 # storage image, for amd64 and arm64, doing only the work a change requires.
 #
 # ci/plan.py hashes the inputs of every image (Dockerfile stages, the files they
@@ -8,8 +8,8 @@ name: build
 #   <registry>/stage:v<pg>-<stage>-<hash>-<arch>          shared bases and heavy extension stages
 #   <registry>/compute-v<pg>:<hash>-<arch>, storage:<hash>-<arch>   built images
 #   <registry>/compute-v<pg>:<hash>, storage:<hash>       ...that passed the tests
-# Whatever already exists is skipped, so e.g. a PostgreSQL 17 minor update rebuilds
-# only the v17 stages, the v17 compute image and storage, and changing one extension
+# Whatever already exists is skipped, so e.g. a PostgreSQL minor update rebuilds the
+# stages, the compute image and storage, and changing one extension
 # rebuilds only its stage (if it has one) and the compute images.
 #
 # Published tags (see README): compute-v18:18.6.<n>, 18.6, 18, latest; storage:<n>, latest.
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.REF }}
-      - run: git submodule update --init --depth 1 vendor/postgres-v17 vendor/postgres-v18
+      - run: git submodule update --init --depth 1 vendor/postgres-v18
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io

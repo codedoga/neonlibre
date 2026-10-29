@@ -1,7 +1,7 @@
 # Third-party licenses in the compute images
 
-This file lists the third-party components that end up in the PostgreSQL 17 and
-PostgreSQL 18 compute images built from `compute/compute-node.Dockerfile`
+This file lists the third-party components that end up in the PostgreSQL 18
+compute image built from `compute/compute-node.Dockerfile`
 (full `EXTENSIONS=all` build, Debian bookworm base). It covers what is shipped
 in the final image, not build-only tooling. The versions are the ones pinned in
 the Dockerfile. The licenses were read from each upstream project's
@@ -14,70 +14,70 @@ not listed component by component.
 
 ## Base pieces
 
-| Component | v17 | v18 | License (SPDX) | Upstream | Notes |
-|---|---|---|---|---|---|
-| Neon (compute_ctl, fast_import, local_proxy, `pgxn/` extensions: neon, neon_rmgr, neon_utils, neon_walredo, neon_test_utils) | this repository | this repository | Apache-2.0 | https://github.com/neondatabase/neon | See `LICENSE` and `NOTICE`. Some files in `pgxn/` are derived from PostgreSQL sources and keep the PostgreSQL Global Development Group copyright notices. The Rust binaries statically link crates.io dependencies. `deny.toml` limits these to 0BSD, Apache-2.0, BSD-2/3-Clause, CC0-1.0, CDDL-1.0, ISC, MIT, MPL-2.0 and Unicode-3.0, plus Zlib for `const_format`. |
-| PostgreSQL (Neon fork, server and `contrib/`; minor releases are merged automatically) | 17.x, pinned by `vendor/postgres-v17` | 18.x, pinned by `vendor/postgres-v18` | PostgreSQL | https://github.com/codedoga/postgres | See `vendor/postgres-vXX/COPYRIGHT`. Neon patches `pg_stat_statements` and `postgres_fdw` at build time (`compute/patches/`). Built with OpenSSL, ICU, libxml2, libxslt, LZ4, Zstd, OSSP uuid and readline from Debian. |
-| Debian base image | `debian:bookworm-slim` @ sha256:40b10734… | same | various (mostly GPL/LGPL/BSD/MIT) | https://www.debian.org | Runtime packages come from Debian bookworm. On v18, Boost 1.83 comes from bookworm-backports. Each package's license is in `/usr/share/doc/<pkg>/copyright` inside the image. See "Copyleft and notable obligations" below. |
+| Component | v18 | License (SPDX) | Upstream | Notes |
+|---|---|---|---|---|
+| Neon (compute_ctl, fast_import, local_proxy, `pgxn/` extensions: neon, neon_rmgr, neon_utils, neon_walredo, neon_test_utils) | this repository | Apache-2.0 | https://github.com/neondatabase/neon | See `LICENSE` and `NOTICE`. Some files in `pgxn/` are derived from PostgreSQL sources and keep the PostgreSQL Global Development Group copyright notices. The Rust binaries statically link crates.io dependencies. `deny.toml` limits these to 0BSD, Apache-2.0, BSD-2/3-Clause, CC0-1.0, CDDL-1.0, ISC, MIT, MPL-2.0 and Unicode-3.0, plus Zlib for `const_format`. |
+| PostgreSQL (Neon fork, server and `contrib/`; minor releases are merged automatically) | 18.x, pinned by `vendor/postgres-v18` | PostgreSQL | https://github.com/codedoga/postgres | See `vendor/postgres-vXX/COPYRIGHT`. Neon patches `pg_stat_statements` and `postgres_fdw` at build time (`compute/patches/`). Built with OpenSSL, ICU, libxml2, libxslt, LZ4, Zstd, OSSP uuid and readline from Debian. |
+| Debian base image | same | various (mostly GPL/LGPL/BSD/MIT) | https://www.debian.org | Runtime packages come from Debian bookworm. On v18, Boost 1.83 comes from bookworm-backports. Each package's license is in `/usr/share/doc/<pkg>/copyright` inside the image. See "Copyleft and notable obligations" below. |
 
 ## Extensions and bundled components
 
-| Component | v17 version | v18 version | License (SPDX id) | Upstream URL | Notes |
-|---|---|---|---|---|---|
-| PostGIS | 3.5.0 | 3.6.0 | GPL-2.0-or-later | https://postgis.net (source: download.osgeo.org) | Copyleft. Some files use MIT, BSD-3-Clause or public domain (see `LICENSE.TXT`). Includes postgis_raster, postgis_topology, postgis_sfcgal, tiger_geocoder and address_standardizer. Links GEOS (LGPL-2.1-or-later), PROJ (MIT), GDAL (MIT) and protobuf-c (BSD-2-Clause) from Debian. |
-| SFCGAL (built from source, installed to `/usr/local`) | 1.4.1 | 1.4.1 | LGPL-2.0-or-later (README/LICENSE); source headers say GPL-2.0-or-later | https://gitlab.com/sfcgal/SFCGAL | Copyleft. Upstream warns that a build against CGAL's GPL modules is effectively GPL-3.0-or-later. Compiled against Debian's header-only CGAL (`libcgal-dev`, GPL-3.0-or-later / LGPL-3.0-or-later per package). Debian's `libsfcgal1` is also installed. |
-| pgRouting | 3.6.2 | 3.8.0 | GPL-2.0-or-later | https://github.com/pgRouting/pgrouting | Copyleft. Some parts are BSL-1.0 (Boost extensions) or MIT, per the upstream README. |
-| plv8 | 3.2.3 | 3.2.5 (commit 094d1082) | PostgreSQL | https://github.com/plv8/plv8 | Neon patch applied (`compute/patches/plv8_*.patch`). |
-| V8 (bundled by plv8 through `bnoordhuis/v8-cmake` @ 90d6634d) | 11.5.150.2 | 11.5.150.2 | BSD-3-Clause | https://github.com/bnoordhuis/v8-cmake (V8: https://v8.dev) | Statically linked into `plv8-*.so`. V8's own third-party parts are listed in `v8/LICENSE*`. |
-| H3 core library | 4.1.0 | 4.2.0 | Apache-2.0 | https://github.com/uber/h3 | Installed under `/usr`. |
-| h3-pg | 4.1.3 | 4.2.3 | Apache-2.0 | https://github.com/postgis/h3-pg | |
-| postgresql-unit | 7.9 | 7.9 | GPL-3.0-or-later | https://github.com/df7cb/postgresql-unit | Copyleft. Its unit definitions come from GNU units (FSF, GPL-3.0-or-later). GitHub detects no license; the terms are in the README and `debian/copyright`. |
-| pgvector | 0.8.0 | 0.8.1 | PostgreSQL | https://github.com/pgvector/pgvector | Neon patch applied. Also ships `vector--0.7.4.sql` from v0.7.4. |
-| pgjwt | commit f3d82fd3 | commit f3d82fd3 | MIT | https://github.com/michelp/pgjwt | |
-| HypoPG | 1.4.1 | 1.4.1 | PostgreSQL | https://github.com/HypoPG/hypopg | |
-| online_advisor | 1.0 | commit e24652f8 | PostgreSQL | https://github.com/knizhnik/online_advisor | |
-| pg_hashids | 1.2.1 | 1.2.1 | MIT | https://github.com/iCyberon/pg_hashids | |
-| RUM | commit cb1edffc | 1.3.15 | PostgreSQL | https://github.com/postgrespro/rum | Neon patch applied. |
-| pgTAP | 1.3.3 | 1.3.3 | PostgreSQL | https://github.com/theory/pgtap | License is declared in `META.json` and the README; the repo has no LICENSE file. |
-| ip4r | 2.4.2 | 2.4.2 | PostgreSQL | https://github.com/RhodiumToad/ip4r | |
-| prefix | 1.2.10 | 1.2.10 | PostgreSQL | https://github.com/dimitri/prefix | |
-| postgresql-hll | 2.18 | 2.18 | Apache-2.0 | https://github.com/citusdata/postgresql-hll | |
-| plpgsql_check | 2.7.11 | 2.8.2 | MIT | https://github.com/okbob/plpgsql_check | |
-| TimescaleDB | 2.17.1 | 2.23.0 | Apache-2.0 (Apache-only build) | https://github.com/timescale/timescaledb | Built with `-DAPACHE_ONLY=ON`. In both versions this skips `add_subdirectory(tsl)`, so the Timescale License (TSL, source-available, not OSI-approved) code and the `timescaledb-tsl-*.so` module are not built or shipped. Telemetry is disabled at build time. |
-| pg_hint_plan | REL17_1_7_0 | REL18_1_8_0 | BSD-3-Clause | https://github.com/ossc-db/pg_hint_plan | |
-| pg_cron | 1.6.4 | 1.6.6 | PostgreSQL | https://github.com/citusdata/pg_cron | Neon patch applied. |
-| RDKit (PostgreSQL cartridge) | Release_2024_09_1 | Release_2025_09_6 | BSD-3-Clause | https://github.com/rdkit/rdkit | Linked statically (`RDK_PGSQL_STATIC=ON`) with optional parts fetched at build time: InChI (see Unverified), AvalonToolkit 2.0.5-pre.3 (BSD-3-Clause, Novartis), coordgenlibs (BSD-3-Clause) and maeparser (MIT). Links Boost (BSL-1.0): 1.74 on v17, 1.83 on v18. |
-| pg_uuidv7 | 1.6.0 | 1.6.0 | MPL-2.0 | https://github.com/fboulnois/pg_uuidv7 | Weak copyleft at file level. Not modified by Neon. |
-| pg_roaringbitmap | 0.5.4 | 0.5.4 | Apache-2.0 | https://github.com/ChenHuajun/pg_roaringbitmap | Bundles CRoaring. |
-| pg-semver | 0.40.0 | 0.41.0 | PostgreSQL | https://github.com/theory/pg-semver | |
-| pgrag (rag, rag_bge_small_en_v15, rag_jina_reranker_v1_tiny_en) | 0.1.2 | 0.1.4 | Apache-2.0 | https://github.com/neondatabase-labs/pgrag | Built with the `remote_onnx` feature: tokenizer and config files are compiled in, and the ONNX model weights are downloaded on first use from `REMOTE_ONNX_URL`. That URL is set at build time to a Neon-internal cluster address (`pg-ext-s3-gateway…svc.cluster.local`). Model licenses on Hugging Face: bge-small-en-v1.5 (BAAI) is MIT, jina-reranker-v1-tiny-en (Jina AI) is Apache-2.0. Uses pgrx 0.14.1 on v17 and 0.16.1 on v18. |
-| ONNX Runtime (used by pgrag) | 1.18.1 | 1.18.1 | MIT | https://github.com/microsoft/onnxruntime | Built from source with a Neon patch. Its bundled dependencies are listed in upstream `ThirdPartyNotices.txt`. |
-| pg_jsonschema | 0.3.3 | 0.3.4 | Apache-2.0 | https://github.com/supabase/pg_jsonschema | Rust/pgrx. |
-| pg_graphql | 1.5.9 | 1.5.12 | Apache-2.0 | https://github.com/supabase/pg_graphql | Rust/pgrx. Neon patch applied. |
-| pg_tiktoken | commit 9118dd45 | commit 0baf8d46 | Apache-2.0 | https://github.com/kelvich/pg_tiktoken | Rust/pgrx. |
-| pgx_ulid | 0.2.0 | 0.2.2 | MIT | https://github.com/pksunkara/pgx_ulid | Rust/pgrx. |
-| pg_session_jwt | 0.3.1 | 0.5.0 | Apache-2.0 | https://github.com/neondatabase/pg_session_jwt | Rust/pgrx. |
-| PostgreSQL Anonymizer (anon) | 2.1.0 | 2.5.1 | PostgreSQL | https://gitlab.com/dalibo/postgresql_anonymizer | Rust/pgrx. Neon patch applied. |
-| pgrx (Rust framework compiled into the Rust extensions above) | 0.12.9 / 0.14.1 | 0.16.1 | MIT | https://github.com/pgcentralfoundation/pgrx | Each Rust extension also statically links its own crates.io dependencies. |
-| wal2json | 2.6 | 2.6 | BSD-3-Clause | https://github.com/eulerto/wal2json | |
-| pg_ivm | 1.9 | 1.12 | PostgreSQL | https://github.com/sraoss/pg_ivm | |
-| pg_partman | 5.1.0 | 5.1.0 | PostgreSQL | https://github.com/pgpartman/pg_partman | |
-| pg_mooncake | 0.1.2 | 0.1.3 (with a Neon PG18 port patch) | MIT | https://github.com/Mooncake-Labs/pg_mooncake | Includes a Rust `delta` component (delta-rs based) and the DuckDB extensions httpfs, icu and json. Neon patches applied. |
-| DuckDB (vendored by pg_mooncake, shared `libduckdb.so`) | 1.1.3 | 1.1.3 | MIT | https://github.com/duckdb/duckdb | Neon patch applied (`duckdb_v113.patch`). |
-| pg_duckdb | 0.3.1 | 1.1.1 (commit 7b0db373) | MIT | https://github.com/duckdb/pg_duckdb | Neon patches applied. |
-| DuckDB (vendored by pg_duckdb) | 1.2.0 (shared library, Neon patch) | 1.4.3 (linked statically) | MIT | https://github.com/duckdb/duckdb | Users can download more DuckDB extensions at runtime with `duckdb.install_extension()`. Those carry their own licenses. |
-| pg_repack | 1.5.2 | 1.5.2 | BSD-3-Clause | https://github.com/reorg/pg_repack | |
-| pgAudit | 17.1 | 18.0 | PostgreSQL | https://github.com/pgaudit/pgaudit | Neon patch applied on v17 only. |
-| pgauditlogtofile | 1.6.4 | 1.6.4 | PostgreSQL | https://github.com/fmbiete/pgauditlogtofile | |
+| Component | v18 version | License (SPDX id) | Upstream URL | Notes |
+|---|---|---|---|---|
+| PostGIS | 3.6.0 | GPL-2.0-or-later | https://postgis.net (source: download.osgeo.org) | Copyleft. Some files use MIT, BSD-3-Clause or public domain (see `LICENSE.TXT`). Includes postgis_raster, postgis_topology, postgis_sfcgal, tiger_geocoder and address_standardizer. Links GEOS (LGPL-2.1-or-later), PROJ (MIT), GDAL (MIT) and protobuf-c (BSD-2-Clause) from Debian. |
+| SFCGAL (built from source, installed to `/usr/local`) | 1.4.1 | LGPL-2.0-or-later (README/LICENSE); source headers say GPL-2.0-or-later | https://gitlab.com/sfcgal/SFCGAL | Copyleft. Upstream warns that a build against CGAL's GPL modules is effectively GPL-3.0-or-later. Compiled against Debian's header-only CGAL (`libcgal-dev`, GPL-3.0-or-later / LGPL-3.0-or-later per package). Debian's `libsfcgal1` is also installed. |
+| pgRouting | 3.8.0 | GPL-2.0-or-later | https://github.com/pgRouting/pgrouting | Copyleft. Some parts are BSL-1.0 (Boost extensions) or MIT, per the upstream README. |
+| plv8 | 3.2.5 (commit 094d1082) | PostgreSQL | https://github.com/plv8/plv8 | Neon patch applied (`compute/patches/plv8_*.patch`). |
+| V8 (bundled by plv8 through `bnoordhuis/v8-cmake` @ 90d6634d) | 11.5.150.2 | BSD-3-Clause | https://github.com/bnoordhuis/v8-cmake (V8: https://v8.dev) | Statically linked into `plv8-*.so`. V8's own third-party parts are listed in `v8/LICENSE*`. |
+| H3 core library | 4.2.0 | Apache-2.0 | https://github.com/uber/h3 | Installed under `/usr`. |
+| h3-pg | 4.2.3 | Apache-2.0 | https://github.com/postgis/h3-pg | |
+| postgresql-unit | 7.9 | GPL-3.0-or-later | https://github.com/df7cb/postgresql-unit | Copyleft. Its unit definitions come from GNU units (FSF, GPL-3.0-or-later). GitHub detects no license; the terms are in the README and `debian/copyright`. |
+| pgvector | 0.8.1 | PostgreSQL | https://github.com/pgvector/pgvector | Neon patch applied. Also ships `vector--0.7.4.sql` from v0.7.4. |
+| pgjwt | commit f3d82fd3 | MIT | https://github.com/michelp/pgjwt | |
+| HypoPG | 1.4.1 | PostgreSQL | https://github.com/HypoPG/hypopg | |
+| online_advisor | commit e24652f8 | PostgreSQL | https://github.com/knizhnik/online_advisor | |
+| pg_hashids | 1.2.1 | MIT | https://github.com/iCyberon/pg_hashids | |
+| RUM | 1.3.15 | PostgreSQL | https://github.com/postgrespro/rum | Neon patch applied. |
+| pgTAP | 1.3.3 | PostgreSQL | https://github.com/theory/pgtap | License is declared in `META.json` and the README; the repo has no LICENSE file. |
+| ip4r | 2.4.2 | PostgreSQL | https://github.com/RhodiumToad/ip4r | |
+| prefix | 1.2.10 | PostgreSQL | https://github.com/dimitri/prefix | |
+| postgresql-hll | 2.18 | Apache-2.0 | https://github.com/citusdata/postgresql-hll | |
+| plpgsql_check | 2.8.2 | MIT | https://github.com/okbob/plpgsql_check | |
+| TimescaleDB | 2.23.0 | Apache-2.0 (Apache-only build) | https://github.com/timescale/timescaledb | Built with `-DAPACHE_ONLY=ON`, which skips `add_subdirectory(tsl)`, so the Timescale License (TSL, source-available, not OSI-approved) code and the `timescaledb-tsl-*.so` module are not built or shipped. Telemetry is disabled at build time. |
+| pg_hint_plan | REL18_1_8_0 | BSD-3-Clause | https://github.com/ossc-db/pg_hint_plan | |
+| pg_cron | 1.6.6 | PostgreSQL | https://github.com/citusdata/pg_cron | Neon patch applied. |
+| RDKit (PostgreSQL cartridge) | Release_2025_09_6 | BSD-3-Clause | https://github.com/rdkit/rdkit | Linked statically (`RDK_PGSQL_STATIC=ON`) with optional parts fetched at build time: InChI v1.07.3 (MIT, from the IUPAC-InChI GitHub releases), AvalonToolkit 2.0.5-pre.3 (BSD-3-Clause, Novartis), coordgenlibs (BSD-3-Clause) and maeparser (MIT). Links Boost 1.83 (BSL-1.0) from bookworm-backports. |
+| pg_uuidv7 | 1.6.0 | MPL-2.0 | https://github.com/fboulnois/pg_uuidv7 | Weak copyleft at file level. Not modified by Neon. |
+| pg_roaringbitmap | 0.5.4 | Apache-2.0 | https://github.com/ChenHuajun/pg_roaringbitmap | Bundles CRoaring. |
+| pg-semver | 0.41.0 | PostgreSQL | https://github.com/theory/pg-semver | |
+| pgrag (rag, rag_bge_small_en_v15, rag_jina_reranker_v1_tiny_en) | 0.1.4 | Apache-2.0 | https://github.com/neondatabase-labs/pgrag | Built with the `remote_onnx` feature: tokenizer and config files are compiled in, and the ONNX model weights are downloaded on first use from `REMOTE_ONNX_URL`. That URL is set at build time to a Neon-internal cluster address (`pg-ext-s3-gateway…svc.cluster.local`). Model licenses on Hugging Face: bge-small-en-v1.5 (BAAI) is MIT, jina-reranker-v1-tiny-en (Jina AI) is Apache-2.0. Uses pgrx 0.16.1. |
+| ONNX Runtime (used by pgrag) | 1.18.1 | MIT | https://github.com/microsoft/onnxruntime | Built from source with a Neon patch. Its bundled dependencies are listed in upstream `ThirdPartyNotices.txt`. |
+| pg_jsonschema | 0.3.4 | Apache-2.0 | https://github.com/supabase/pg_jsonschema | Rust/pgrx. |
+| pg_graphql | 1.5.12 | Apache-2.0 | https://github.com/supabase/pg_graphql | Rust/pgrx. Neon patch applied. |
+| pg_tiktoken | commit 0baf8d46 | Apache-2.0 | https://github.com/kelvich/pg_tiktoken | Rust/pgrx. |
+| pgx_ulid | 0.2.2 | MIT | https://github.com/pksunkara/pgx_ulid | Rust/pgrx. |
+| pg_session_jwt | 0.5.0 | Apache-2.0 | https://github.com/neondatabase/pg_session_jwt | Rust/pgrx. |
+| PostgreSQL Anonymizer (anon) | 2.5.1 | PostgreSQL | https://gitlab.com/dalibo/postgresql_anonymizer | Rust/pgrx. Neon patch applied. |
+| pgrx (Rust framework compiled into the Rust extensions above) | 0.16.1 | MIT | https://github.com/pgcentralfoundation/pgrx | Each Rust extension also statically links its own crates.io dependencies. |
+| wal2json | 2.6 | BSD-3-Clause | https://github.com/eulerto/wal2json | |
+| pg_ivm | 1.12 | PostgreSQL | https://github.com/sraoss/pg_ivm | |
+| pg_partman | 5.1.0 | PostgreSQL | https://github.com/pgpartman/pg_partman | |
+| pg_mooncake | 0.1.3 (with a Neon PG18 port patch) | MIT | https://github.com/Mooncake-Labs/pg_mooncake | Includes a Rust `delta` component (delta-rs based) and the DuckDB extensions httpfs, icu and json. Neon patches applied. |
+| DuckDB (vendored by pg_mooncake, shared `libduckdb.so`) | 1.1.3 | MIT | https://github.com/duckdb/duckdb | Neon patch applied (`duckdb_v113.patch`). |
+| pg_duckdb | 1.1.1 (commit 7b0db373) | MIT | https://github.com/duckdb/pg_duckdb | Neon patches applied. |
+| DuckDB (vendored by pg_duckdb) | 1.4.3 (linked statically) | MIT | https://github.com/duckdb/duckdb | Users can download more DuckDB extensions at runtime with `duckdb.install_extension()`. Those carry their own licenses. |
+| pg_repack | 1.5.2 | BSD-3-Clause | https://github.com/reorg/pg_repack | |
+| pgAudit | 18.0 | PostgreSQL | https://github.com/pgaudit/pgaudit | No Neon patch (18.0 already contains it). |
+| pgauditlogtofile | 1.6.4 | PostgreSQL | https://github.com/fmbiete/pgauditlogtofile | |
 
 ## Other bundled programs
 
-| Component | v17 version | v18 version | License (SPDX id) | Upstream URL | Notes |
-|---|---|---|---|---|---|
-| PgBouncer | 1.24.1 | 1.24.1 | ISC | https://github.com/pgbouncer/pgbouncer | Built from source. Includes the libusual (ISC) and uthash (BSD-1-Clause) submodules. Links libevent (BSD-3-Clause) and OpenSSL (Apache-2.0). |
-| postgres_exporter | 0.17.1 | 0.17.1 | Apache-2.0 | https://github.com/prometheus-community/postgres_exporter | Upstream prebuilt release binary (Go, statically linked). |
-| pgbouncer_exporter | 0.10.2 | 0.10.2 | MIT | https://github.com/prometheus-community/pgbouncer_exporter | Upstream prebuilt release binary (Go). |
-| sql_exporter | 0.17.3 | 0.17.3 | MIT | https://github.com/burningalchemist/sql_exporter | Upstream prebuilt release binary (Go). |
+| Component | v18 version | License (SPDX id) | Upstream URL | Notes |
+|---|---|---|---|---|
+| PgBouncer | 1.24.1 | ISC | https://github.com/pgbouncer/pgbouncer | Built from source. Includes the libusual (ISC) and uthash (BSD-1-Clause) submodules. Links libevent (BSD-3-Clause) and OpenSSL (Apache-2.0). |
+| postgres_exporter | 0.17.1 | Apache-2.0 | https://github.com/prometheus-community/postgres_exporter | Upstream prebuilt release binary (Go, statically linked). |
+| pgbouncer_exporter | 0.10.2 | MIT | https://github.com/prometheus-community/pgbouncer_exporter | Upstream prebuilt release binary (Go). |
+| sql_exporter | 0.17.3 | MIT | https://github.com/burningalchemist/sql_exporter | Upstream prebuilt release binary (Go). |
 
 ## Copyleft and notable obligations
 
@@ -93,7 +93,7 @@ not listed component by component.
   - libreadline8 is GPL-3.0-or-later and is linked by `psql`.
   - The source is available from Debian, and the license terms are in `/usr/share/doc/*/copyright`.
 - **TimescaleDB:** only the Apache-2.0 part is built (`APACHE_ONLY=ON`). The source-available Timescale License (TSL) features under `tsl/`, such as native compression and continuous aggregates, are absent. No non-OSI TimescaleDB code is shipped.
-- **Patched third-party sources:** Neon applies local patches (in `compute/patches/`) to these permissively licensed components: PostgreSQL contrib, plv8, pgvector, RUM, pg_cron, pg_graphql, anon, ONNX Runtime, DuckDB, pg_duckdb, pg_mooncake and pgAudit (v17). The patches are in this repository.
+- **Patched third-party sources:** Neon applies local patches (in `compute/patches/`) to these permissively licensed components: PostgreSQL contrib, plv8, pgvector, RUM, pg_cron, pg_graphql, anon, ONNX Runtime, DuckDB, pg_duckdb and pg_mooncake. The patches are in this repository.
 - **Attribution:** the BSD, MIT, ISC, Apache-2.0, BSL-1.0 and PostgreSQL licenses require keeping copyright and license notices when the software is redistributed. Apache-2.0 also requires keeping NOTICE files, for example Neon's `NOTICE`.
 - **Runtime downloads:** pgrag downloads ONNX model weights at runtime (MIT and Apache-2.0 per their model cards), and pg_duckdb can install DuckDB extensions at runtime.
   - Neither is part of the image.
@@ -101,9 +101,6 @@ not listed component by component.
 
 ## Unverified
 
-- **RDKit InChI support (`RDK_BUILD_INCHI_SUPPORT=ON`):**
-  - v18 (Release_2025_09_6) downloads InChI v1.07.3 from the IUPAC-InChI GitHub releases. That repository is MIT-licensed.
-  - v17 (Release_2024_09_1) downloads `INCHI-1-SRC.zip` from an rdkit.org mirror (MD5 f2efa0c58cef32915686c04d7055b4e9). The commented-out URL suggests InChI 1.06, which was released under the IUPAC/InChI-Trust Licence No. 1.0 (LGPL-2.1-based) rather than MIT. The version and license of that archive were not confirmed.
 - **Bundled code inside large components was not audited:** third-party code vendored inside DuckDB, ONNX Runtime, V8, RDKit and PostGIS, the full crates.io dependency trees of the pgrx extensions and the Neon binaries, and the Go module dependencies of the three exporters.
 - **Debian package licenses** are quoted from general knowledge of the packages, not checked one by one against the copyright files in the image.
 - **pgrag model files:** the license of the ONNX files served from the Neon-internal `REMOTE_ONNX_URL` is assumed to match the upstream Hugging Face models (BAAI/bge-small-en-v1.5: MIT; jinaai/jina-reranker-v1-tiny-en: Apache-2.0). The hosted files themselves were not inspected.

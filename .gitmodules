@@ -14,12 +14,12 @@
 	path = vendor/postgres-v16
 	url = https://github.com/neondatabase/postgres.git
 	branch = REL_16_STABLE_neon
-# v17 and v18 are the versions this repository builds and ships. They point at
+# v18 is the only version this repository builds and ships; it points at
 # codedoga/postgres, where update-postgres.yml merges new minor releases.
-# v14-v16 only provide headers for postgres_ffi's bindgen.
+# v14-v17 only provide headers for postgres_ffi's bindgen.
 [submodule "vendor/postgres-v17"]
 	path = vendor/postgres-v17
-	url = https://github.com/codedoga/postgres.git
+	url = https://github.com/neondatabase/postgres.git
 	branch = REL_17_STABLE_neon
 # v18 carries pgaio_io_complete_synchronously(), which is not in neondatabase/postgres.
 [submodule "vendor/postgres-v18"]
