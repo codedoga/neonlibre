@@ -15,7 +15,7 @@ export REPOSITORY="${REPOSITORY:-neonlibre}" TAG="${TAG:-ci}" PG_VERSION PG_TEST
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-neonlibre-ci-v${PG_VERSION}}"
 # The minio image pinned in docker-compose.yml (quay.io) and minio/mc are no longer pullable.
 export MINIO_IMAGE="${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-04-17T00-00-00Z}"
-# PRELOAD_EXTRA=a,b appends libraries to shared_preload_libraries.
+# PRELOAD_EXTRA=a,b appends libraries to shared_preload_libraries; PRELOAD=a,b replaces them.
 export CI_CONFIGS_DIR="${CI_CONFIGS_DIR:-$(mktemp -d)}"
 
 OVERRIDE="${CI_CONFIGS_DIR}/override.yml"
@@ -43,8 +43,8 @@ cp "${ROOT}/docker-compose/pageserver_config/"{identity,pageserver}.toml "${CI_C
 chmod 755 "${CI_CONFIGS_DIR}" "${CI_CONFIGS_DIR}/configs"
 chmod 777 "${CI_CONFIGS_DIR}/pageserver"
 chmod 666 "${CI_CONFIGS_DIR}/pageserver/"*.toml
-jq --arg extra "${PRELOAD_EXTRA:-}" '(.spec.cluster.settings[] | select(.name=="shared_preload_libraries").value)
-    |= (if $extra == "" then . else . + "," + $extra end)' \
+jq --arg only "${PRELOAD:-}" --arg extra "${PRELOAD_EXTRA:-}" '(.spec.cluster.settings[] | select(.name=="shared_preload_libraries").value)
+    |= (if $only == "" then . else $only end | if $extra == "" then . else . + "," + $extra end)' \
     "${ROOT}/docker-compose/compute_wrapper/var/db/postgres/configs/config.json" > "${CI_CONFIGS_DIR}/configs/config.json"
 chmod 644 "${CI_CONFIGS_DIR}/configs/config.json"
 
