@@ -8,6 +8,8 @@
 # before and after, and that amcheck accepts every btree index afterwards.
 #
 #   PG_VERSION=18 ci/pg-regress-test.sh
+# Only neon preloaded: the default set's timescaledb adds warnings to the expected output.
+export PRELOAD="${PRELOAD:-neon}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 export COMPOSE_PROFILES=test-extensions
 
@@ -23,15 +25,19 @@ wait_ready
 
 # pg_regress runs in the test container; the server needs regress.so in its libdir
 # (next to contrib's autoinc and refint) and the input files at the same path, for
-# server-side COPY.
+# server-side COPY, and the output directory too, which server-side COPY writes into.
 dc exec -T neon-test-extensions make -s -C "${R}" all
+dc exec -T compute1 mkdir -p /tmp/regress-out/results
 dc cp "neon-test-extensions:${R}" "${OUT}/regress"
 dc exec -T -u root compute1 mkdir -p "$(dirname "${R}")"
 dc cp "${OUT}/regress" "compute1:${R}"
 dc cp "${OUT}/regress/regress.so" compute1:/usr/local/lib/regress.so
 
 set +e
-dc exec -T -w "${R}" neon-test-extensions ./pg_regress \
+# regress_test_mode lets CREATE TABLESPACE through (in-place tablespaces); compute_query_id
+# would add a Query Identifier line to every EXPLAIN VERBOSE.
+dc exec -T -w "${R}" -e PGOPTIONS="-c neon.regress_test_mode=on -c compute_query_id=off" \
+    neon-test-extensions ./pg_regress \
     --inputdir=. --outputdir=/tmp/regress-out --bindir=/usr/local/pgsql/bin \
     --dlpath=/usr/local/lib --host=compute1 --port=55433 --user=cloud_admin \
     --schedule=parallel_schedule 2>&1 | tee "${OUT}/regress.log"
