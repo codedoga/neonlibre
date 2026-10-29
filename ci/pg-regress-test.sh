@@ -15,8 +15,13 @@ export PRELOAD="${PRELOAD:-neon,pg_stat_statements}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 export COMPOSE_PROFILES=test-extensions
 
-# Tests whose output differs on a Neon compute for reasons that are not bugs.
-EXPECTED_FAILURES="${EXPECTED_FAILURES:-}"
+# Tests that fail here for known reasons:
+#  copy, psql, largeobject: the client writes a file that the server then reads (or the
+#    other way round), and here client and server are different containers.
+#  collate.icu.utf8: initdb runs in the storage image, whose PostgreSQL uses the static
+#    ICU 67 of Neon's build-tools image, while the compute uses Debian's ICU 72, so every
+#    ICU collation reports a version mismatch. Inherited from upstream Neon.
+EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8}"
 
 R=/postgres/src/test/regress
 OUT="$(mktemp -d)"
@@ -37,8 +42,10 @@ dc cp "${OUT}/regress/regress.so" compute1:/usr/local/lib/regress.so
 
 set +e
 # regress_test_mode lets CREATE TABLESPACE through (in-place tablespaces); compute_query_id
-# would add a Query Identifier line to every EXPLAIN VERBOSE.
-dc exec -T -w "${R}" -e PGOPTIONS="-c neon.regress_test_mode=on -c compute_query_id=off" \
+# would add a Query Identifier line to every EXPLAIN VERBOSE; the compose config's md5
+# password_encryption a warning to create_role.
+opts="-c neon.regress_test_mode=on -c compute_query_id=off -c password_encryption=scram-sha-256"
+dc exec -T -w "${R}" -e PGOPTIONS="${opts}" \
     neon-test-extensions ./pg_regress \
     --inputdir=. --outputdir=/tmp/regress-out --bindir=/usr/local/pgsql/bin \
     --dlpath=/usr/local/lib --host=compute1 --port=55433 --user=cloud_admin \
