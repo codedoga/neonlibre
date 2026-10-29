@@ -21,9 +21,19 @@ name: tests
 #    (expensive) Postgres + Rust build happens once.
 
 # Manual only: the full suite takes hours. Routine builds run the image tests in build.yml.
+# suite=minor is the subset for a PostgreSQL minor update (update-postgres dispatches it on
+# its branch and enables auto-merge only when it passes): the PostgreSQL regression,
+# isolation and SQL suites in one Neon configuration, plus the files covering the WAL redo
+# and storage paths that upstream minor releases tend to touch.
 on:
   workflow_dispatch:
     inputs:
+      suite:
+        description: full (every test, ~2h) or minor (the PostgreSQL update subset)
+        required: false
+        default: full
+        type: choice
+        options: [ full, minor ]
       pg_version:
         description: PostgreSQL major version to test
         required: false
@@ -40,7 +50,7 @@ concurrency:
   # Keyed by version as well as ref, so that dispatching a v17 run to compare
   # against does not cancel the v18 run you are comparing it with. Deciding
   # whether a failure is v18-specific means running both.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.pg_version || 'v18' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.pg_version || 'v18' }}-${{ inputs.suite || 'full' }}
   cancel-in-progress: true
 
 # As the upstream workflows do. Without this, `run:` steps in a container job get
@@ -154,7 +164,11 @@ jobs:
           # two-hour budget -- killed inside test_isolation, with pg_regress
           # itself having taken the first hour.
           n="${{ inputs.shards || '10' }}"
-          echo "shards=$(python3 -c "import json;print(json.dumps(list(range(1,$n+1))+['regress']))")" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.suite }}" = minor ]; then
+            echo 'shards=["minor-regress","minor-storage"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "shards=$(python3 -c "import json;print(json.dumps(list(range(1,$n+1))+['regress']))")" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Package what the test jobs need
         run: |
@@ -277,8 +291,22 @@ jobs:
           # Everything else is a deterministic round-robin over the remaining
           # files, so a shard always covers the same set and a failure can be
           # reproduced by re-running that shard alone.
+          SELECT=()
           if [ "$SHARD" = "regress" ]; then
             FILES=(test_runner/regress/test_pg_regress.py)
+            WORKERS=2
+          elif [ "$SHARD" = "minor-regress" ]; then
+            # One configuration (reldir v2, unsharded) of pg_regress, isolation and
+            # sql_regress instead of all four.
+            FILES=(test_runner/regress/test_pg_regress.py)
+            SELECT=(-k "None and v2")
+            WORKERS=2
+          elif [ "$SHARD" = "minor-storage" ]; then
+            FILES=()
+            for t in unlogged postgres_version vm_bits vm_truncate multixact twophase \
+                     hot_standby gin_redo branching clog_truncate subxacts; do
+              FILES+=("test_runner/regress/test_$t.py")
+            done
             WORKERS=2
           else
             mapfile -t FILES < <(printf '%s\n' test_runner/regress/test_*.py \
@@ -310,8 +338,9 @@ jobs:
               -p no:cacheprovider \
               -n "$WORKERS" --dist=loadgroup \
               --timeout=600 \
+              --reruns 2 \
               --junit-xml="${TEST_OUTPUT}/junit-shard-${SHARD}.xml" \
-              "${FILES[@]}"
+              "${SELECT[@]}" "${FILES[@]}"
 
       - name: Upload the results
         if: always()
@@ -418,3 +447,23 @@ jobs:
           print(f"{bad} failing tests out of {total}, from {len(files)} shards")
           sys.exit(1 if bad else 0)
           PY
+
+  # update-postgres builds its branch without publishing and without auto-merge; once the
+  # minor-update subset passed, this publishes the images (a second build run, which finds
+  # everything built and tested and only tags) and turns auto-merge on, so GitHub merges
+  # when ci-ok is green too.
+  merge:
+    name: publish and auto-merge the PostgreSQL update
+    needs: report
+    if: inputs.suite == 'minor' && github.ref == 'refs/heads/auto/postgres-update'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref auto/postgres-update -f publish=true
+          gh pr merge auto/postgres-update -R "$GITHUB_REPOSITORY" --auto --merge --delete-branch

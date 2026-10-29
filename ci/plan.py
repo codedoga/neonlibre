@@ -82,6 +82,7 @@ def pg_full_version(pg):
 def main():
     check_inherited_args(COMPUTE_DOCKERFILE)
     reg = os.environ["REGISTRY"]
+    retest = os.environ.get("RETEST") == "true"
     refs = {}  # key -> image ref; checked against the registry in one go below
     hashes = {}
     for pg in PG_VERSIONS:
@@ -124,7 +125,7 @@ def main():
                     "tests": "" if have[pg, "extension-tests", arch] else tests,
                     "contexts": base_ctx + " " + " ".join(f"{t}={refs[pg, t, arch]}" for t in HEAVY)})
             # A new storage image serves both PostgreSQL versions, so it is tested with both.
-            if not have["storage", "tested"] or not have[pg, "tested"]:
+            if retest or not have["storage", "tested"] or not have[pg, "tested"]:
                 plan["test"].append({"pg": pg, "arch": arch, "compute": final, "tests": tests,
                                      "storage": refs["storage", arch]})
         plan["images"].append({"name": f"compute-v{pg}", "hash": hashes[pg, ""],
