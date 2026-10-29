@@ -1,8 +1,8 @@
 # neonlibre
 
 Container images of [Neon](https://github.com/neondatabase/neon), the open-source
-serverless Postgres with separated storage and compute, built for **PostgreSQL 17
-and 18**, with security and minor releases of PostgreSQL merged automatically.
+serverless Postgres with separated storage and compute, built for **PostgreSQL
+18**, with security and minor releases of PostgreSQL merged automatically.
 
 > **Not affiliated with Neon or Databricks.** This is an independent, unofficial
 > build of the open-source Neon code. "Neon" is a trademark of its owner and is
@@ -14,20 +14,20 @@ and 18**, with security and minor releases of PostgreSQL merged automatically.
 - **Neon**, from `neondatabase/neon`, with PostgreSQL 18 support added by
   [elliots/neon-pg18](https://github.com/elliots/neon-pg18). Why each change was
   needed is written up in [pg18changes.md](pg18changes.md).
-- **PostgreSQL** from the Neon branches of [codedoga/postgres](https://github.com/codedoga/postgres)
-  (`REL_17_STABLE_neon`, `REL_18_STABLE_neon`), a fork of `neondatabase/postgres`.
-  The v18 branch carries one extra commit, `pgaio_io_complete_synchronously()`,
+- **PostgreSQL** from the Neon branch of [codedoga/postgres](https://github.com/codedoga/postgres)
+  (`REL_18_STABLE_neon`), a fork of `neondatabase/postgres`.
+  The branch carries one extra commit, `pgaio_io_complete_synchronously()`,
   which lets a network-backed storage manager complete AIO reads.
 - On top of that, this repository adds:
   - fixes found while testing: control-file decoding for older clusters, and the
     Boost runtime for rdkit on v18;
   - PostgreSQL 18 builds of rum, plv8, pg_duckdb, pg_mooncake, pgrag and
-    online_advisor, so v18 ships the same extension set as v17;
-  - a storage image that ships only PostgreSQL 17 and 18;
+    online_advisor, so it ships the same extension set as Neon's v17 image;
+  - a storage image that ships only PostgreSQL 18;
   - CI that builds, tests and publishes everything on GitHub-hosted runners
     ([.github/workflows](.github/workflows)).
 
-Older PostgreSQL versions (14–16) are not built or shipped. Their headers are
+Older PostgreSQL versions (14–17) are not built or shipped. Their headers are
 still installed at build time, because Neon's Rust code generates bindings for
 every version it knows.
 
@@ -38,7 +38,6 @@ All images are multi-arch (`linux/amd64`, `linux/arm64`).
 | Image | Tags |
 |---|---|
 | `ghcr.io/codedoga/neonlibre/compute-v18` | `18.6.42`, `18.6`, `18`, `latest` |
-| `ghcr.io/codedoga/neonlibre/compute-v17` | `17.11.42`, `17.11`, `17`, `latest` |
 | `ghcr.io/codedoga/neonlibre/storage` | `42`, `latest` |
 
 The numbers above are examples. The scheme is:
@@ -47,14 +46,15 @@ The numbers above are examples. The scheme is:
   published builds of that image. A new number is published only when the image
   actually changed, and a tag is never reused.
 - **storage:** `<n>`, counted the same way. It has no PostgreSQL version of its
-  own: it contains both 17 and 18, for WAL redo and initdb.
+  own; it contains PostgreSQL 18 for WAL redo and initdb.
 - Every image is also tagged with the hash of its inputs (`<hash>`), once it has
   passed the tests. That is how CI knows what it does not need to build again.
 
 This is ordinary semver as far as Dependabot is concerned. A PostgreSQL minor
 release shows up as a minor update (`18.6.42` → `18.7.43`), and any other change
-to the image as a patch update (`18.6.42` → `18.6.43`). Each major version is its own image, so
-Dependabot never proposes 17 → 18. Pin the full tag and let Dependabot move it:
+to the image as a patch update (`18.6.42` → `18.6.43`). The major version is part of the
+image name, so a future major version would be a new image rather than an update.
+Pin the full tag and let Dependabot move it:
 
 ```yaml
 # .github/dependabot.yml in a repository that uses the images
@@ -70,34 +70,34 @@ updates:
 FROM ghcr.io/codedoga/neonlibre/compute-v18:18.6.42
 ```
 
-The images are drop-in replacements for Neon's `compute-node-v17/v18` and `neon`
+The images are drop-in replacements for Neon's `compute-node-v18` and `neon`
 images. [docker-compose/](docker-compose) shows how they fit together.
 
 ## How updates happen
 
 | Workflow | When | What |
 |---|---|---|
-| [update-postgres](.github/workflows/update-postgres.yml) | weekly | Merges the newest `REL_17_*` / `REL_18_*` release tag into the Neon branches of `codedoga/postgres`, bumps the submodules, then builds, tests and publishes. On a merge conflict it opens an issue instead. |
+| [update-postgres](.github/workflows/update-postgres.yml) | weekly | Merges the newest `REL_18_*` release tag into the Neon branch of `codedoga/postgres` and opens a pull request bumping the submodule. It runs `build` on that branch and auto-merges once `ci-ok` passes. On a merge conflict it opens an issue instead. |
 | [build](.github/workflows/build.yml) | on every push to `main`, and on pull requests | Builds and tests only what the change affects (below). Pushes to `main` publish the images that changed; pull requests do not. |
 | [tests](.github/workflows/pg-tests.yml) | manual | Neon's full Python regression suite, sharded. It takes hours. |
 
 `build` decides what to do from [ci/plan.py](ci/plan.py), which hashes the inputs
 of every image: the Dockerfile stages it depends on, the files they copy and the
 PostgreSQL submodule, and looks the hashes up in the registry. Anything already
-built is skipped. A PostgreSQL 17 minor update rebuilds only the v17 images and
-storage. Changing one extension rebuilds its own stage, if it has one, and the
-compute images, and leaves storage alone. A change to the CI scripts alone
+built is skipped. A PostgreSQL minor update rebuilds the compute and storage
+images. Changing one extension rebuilds its own stage, if it has one, and the
+compute image, and leaves storage alone. A change to the CI scripts alone
 rebuilds nothing.
 
 Extension versions are not updated automatically, because an extension bump can
-break compatibility. Debian packages are updated when a security report calls for
-it, not on a schedule. Change them in
+break compatibility. Change them in
 [compute/compute-node.Dockerfile](compute/compute-node.Dockerfile) and let CI test
-the result.
+the result. Debian packages are updated when a security report calls for it, not
+on a schedule.
 
 ## What CI tests before publishing
 
-For each of PostgreSQL 17 and 18, on both architectures, against a docker-compose
+On both architectures, against a docker-compose
 Neon stack (pageserver, three safekeepers, storage broker, minio):
 
 1. **Smoke test** ([ci/compose-smoke.sh](ci/compose-smoke.sh)): write data,
@@ -106,7 +106,7 @@ Neon stack (pageserver, three safekeepers, storage broker, minio):
 2. **`CREATE EXTENSION`** for every extension in the image
    ([ci/ext-test.sh](ci/ext-test.sh) `create`).
 3. **Regression tests** of the extensions whose version or code differs from
-   upstream Neon's v17 build ([ci/ext-test.sh](ci/ext-test.sh) `run`).
+   upstream Neon's PostgreSQL 17 build ([ci/ext-test.sh](ci/ext-test.sh) `run`).
 4. **pg_duckdb** with `shared_preload_libraries`, including Neon's privilege
    grants ([ci/duckdb-test.sh](ci/duckdb-test.sh)).
 

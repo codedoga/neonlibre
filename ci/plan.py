@@ -18,7 +18,7 @@ from pathlib import Path
 
 from input_hash import input_hash, parse
 
-PG_VERSIONS = ["17", "18"]
+PG_VERSIONS = ["18"]
 ARCHES = ["amd64", "arm64"]
 # Shared bases, built in this order by one job; later ones build on earlier ones.
 BASES = ["pg-build", "pg-build-with-cargo", "rust-extensions-build",

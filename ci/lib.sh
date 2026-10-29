@@ -5,11 +5,11 @@
 #   ${REPOSITORY}/neon:${TAG}                                     storage
 #   ${REPOSITORY}/compute-node-v${PG_VERSION}:${TAG}              compute
 #   ${REPOSITORY}/neon-test-extensions-v${PG_VERSION}:${TAG}      extension tests
-# PG_VERSION is the major version, 17 or 18.
+# PG_VERSION is the major version; only 18 is built.
 
 set -euo pipefail
 
-: "${PG_VERSION:?set PG_VERSION to 17 or 18}"
+: "${PG_VERSION:?set PG_VERSION to 18}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export REPOSITORY="${REPOSITORY:-neonlibre}" TAG="${TAG:-ci}" PG_VERSION PG_TEST_VERSION="${PG_VERSION}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-neonlibre-ci-v${PG_VERSION}}"

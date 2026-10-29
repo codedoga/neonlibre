@@ -1,7 +1,7 @@
 name: update-postgres
 
-# Weekly: merge the newest PostgreSQL 17/18 minor release into the Neon branches of
-# <owner>/postgres, point vendor/postgres-v17/-v18 at the result on a branch, open a
+# Weekly: merge the newest PostgreSQL 18 minor release into the Neon branch of
+# <owner>/postgres, point vendor/postgres-v18 at the result on a branch, open a
 # pull request, run `build` on that branch (it builds, tests and publishes only what
 # changed) and enable auto-merge, so main takes the bump once the required ci-ok check
 # passes. A merge conflict opens an issue and stops; a failing build leaves the pull
@@ -17,7 +17,7 @@ on:
       majors:
         description: PostgreSQL major versions to update
         type: string
-        default: "17 18"
+        default: "18"
 
 permissions:
   actions: write
@@ -58,8 +58,9 @@ jobs:
           changed=() versions=()
           git clone --quiet --no-checkout "git@github.com:$POSTGRES_REPO.git" pg
           git -C pg remote add upstream https://github.com/postgres/postgres.git
-          git -C pg fetch --quiet upstream "refs/tags/REL_17_*:refs/tags/REL_17_*" "refs/tags/REL_18_*:refs/tags/REL_18_*"
-          for major in ${MAJORS:-17 18}; do
+          refspecs=(); for m in ${MAJORS:-18}; do refspecs+=("refs/tags/REL_${m}_*:refs/tags/REL_${m}_*"); done
+          git -C pg fetch --quiet upstream "${refspecs[@]}"
+          for major in ${MAJORS:-18}; do
             branch="REL_${major}_STABLE_neon"
             git -C pg checkout --quiet -B "$branch" "origin/$branch"
             latest=$(git -C pg tag -l "REL_${major}_*" | grep -E "^REL_${major}_[0-9]+$" | sort -t_ -k3 -n | tail -1)
@@ -91,7 +92,7 @@ jobs:
             echo "PostgreSQL ${versions[*]}" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "PostgreSQL 17 and 18 are up to date" >> "$GITHUB_STEP_SUMMARY"
+            echo "PostgreSQL ${MAJORS:-18} is up to date" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Open or update the pull request
         id: pr
