@@ -8,8 +8,10 @@
 # before and after, and that amcheck accepts every btree index afterwards.
 #
 #   PG_VERSION=18 ci/pg-regress-test.sh
-# Only neon preloaded: the default set's timescaledb adds warnings to the expected output.
-export PRELOAD="${PRELOAD:-neon}"
+# Not the default set: its timescaledb adds warnings to the expected output. (Not bare
+# "neon" either: compute.sh appends pgx_ulid by sed-replacing this string, which would
+# also hit neon.pageserver_connstring.)
+export PRELOAD="${PRELOAD:-neon,pg_stat_statements}"
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 export COMPOSE_PROFILES=test-extensions
 
