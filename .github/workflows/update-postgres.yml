@@ -79,8 +79,12 @@ jobs:
             pinned=$(git ls-tree HEAD "vendor/postgres-v$major" | awk '{print $3}')
             if [[ "$tip" != "$pinned" ]]; then
               git update-index --cacheinfo "160000,$tip,vendor/postgres-v$major"
-              changed+=("v$major")
-              versions+=("$(git -C pg show HEAD:configure | sed -n "s/^PACKAGE_VERSION='\(.*\)'$/\1/p")")
+              version=$(git -C pg show HEAD:configure | sed -n "s/^PACKAGE_VERSION='\(.*\)'$/\1/p")
+              changed+=("v$major") versions+=("$version")
+              # test_postgres_version checks this, and the tests workflow keys its cache on it.
+              jq --arg k "v$major" --arg v "$version" --arg c "$tip" '.[$k] = [$v, $c]' \
+                vendor/revisions.json > revisions.json.tmp && mv revisions.json.tmp vendor/revisions.json
+              git add vendor/revisions.json
             fi
           done
           rm -rf pg
