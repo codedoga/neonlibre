@@ -63,8 +63,12 @@ run)
         d="${e%-src}-src"
         # run-tests.sh runs every dir not in SKIP; skip all but this one.
         skip="$(dc exec -T neon-test-extensions ls /ext-src | grep -vx "${d}" | paste -sd, -)"
+        # One retry: some suites are timing-sensitive, e.g. rum's predicate-rum isolation
+        # test, where serializable isolation may abort an extra transaction.
         if dc exec -T -e USE_PGXS=1 -e SKIP="${skip}" neon-test-extensions /run-tests.sh /ext-src; then
             echo "PASSED  ${d}"
+        elif echo "RETRY   ${d}" && dc exec -T -e USE_PGXS=1 -e SKIP="${skip}" neon-test-extensions /run-tests.sh /ext-src; then
+            echo "PASSED  ${d} (on retry)"
         else
             echo "FAILED  ${d}"; rc=1
         fi

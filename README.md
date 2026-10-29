@@ -24,6 +24,12 @@ serverless Postgres with separated storage and compute, built for **PostgreSQL
   - PostgreSQL 18 builds of rum, plv8, pg_duckdb, pg_mooncake, pgrag and
     online_advisor, so it ships the same extension set as Neon's v17 image;
   - a storage image that ships only PostgreSQL 18;
+  - smaller images: binaries and libraries are stripped of debug info (symbols stay,
+    so backtraces still name functions), and the storage image drops the aws CLI, the
+    deprecated `postgres_install.tar.gz` and the compute-only Neon extensions;
+  - pgrag's `rag_bge_small_en_v15` and `rag_jina_reranker_v1_tiny_en` download their
+    ONNX model (about 127MB each) from Hugging Face on first use, so the compute needs
+    outbound HTTPS to `huggingface.co` for them, and both need `shared_preload_libraries`;
   - CI that builds, tests and publishes everything on GitHub-hosted runners
     ([.github/workflows](.github/workflows)).
 

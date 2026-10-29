@@ -50,7 +50,7 @@ not listed component by component.
 | pg_uuidv7 | 1.6.0 | MPL-2.0 | https://github.com/fboulnois/pg_uuidv7 | Weak copyleft at file level. Not modified by Neon. |
 | pg_roaringbitmap | 0.5.4 | Apache-2.0 | https://github.com/ChenHuajun/pg_roaringbitmap | Bundles CRoaring. |
 | pg-semver | 0.41.0 | PostgreSQL | https://github.com/theory/pg-semver | |
-| pgrag (rag, rag_bge_small_en_v15, rag_jina_reranker_v1_tiny_en) | 0.1.4 | Apache-2.0 | https://github.com/neondatabase-labs/pgrag | Built with the `remote_onnx` feature: tokenizer and config files are compiled in, and the ONNX model weights are downloaded on first use from `REMOTE_ONNX_URL`. That URL is set at build time to a Neon-internal cluster address (`pg-ext-s3-gateway…svc.cluster.local`). Model licenses on Hugging Face: bge-small-en-v1.5 (BAAI) is MIT, jina-reranker-v1-tiny-en (Jina AI) is Apache-2.0. Uses pgrx 0.16.1. |
+| pgrag (rag, rag_bge_small_en_v15, rag_jina_reranker_v1_tiny_en) | 0.1.4 | Apache-2.0 | https://github.com/neondatabase-labs/pgrag | Built with the `remote_onnx` feature: tokenizer and config files are compiled in, and the ONNX model weights are downloaded on first use from `REMOTE_ONNX_URL`. That URL is set at build time to the ONNX file of each model on Hugging Face, pinned to a commit: `Xenova/bge-small-en-v1.5` (an ONNX conversion of BAAI/bge-small-en-v1.5) and `jinaai/jina-reranker-v1-tiny-en`. Model licenses on Hugging Face: bge-small-en-v1.5 (BAAI) is MIT, jina-reranker-v1-tiny-en (Jina AI) is Apache-2.0. Uses pgrx 0.16.1. |
 | ONNX Runtime (used by pgrag) | 1.18.1 | MIT | https://github.com/microsoft/onnxruntime | Built from source with a Neon patch. Its bundled dependencies are listed in upstream `ThirdPartyNotices.txt`. |
 | pg_jsonschema | 0.3.4 | Apache-2.0 | https://github.com/supabase/pg_jsonschema | Rust/pgrx. |
 | pg_graphql | 1.5.12 | Apache-2.0 | https://github.com/supabase/pg_graphql | Rust/pgrx. Neon patch applied. |
@@ -97,11 +97,11 @@ not listed component by component.
 - **Attribution:** the BSD, MIT, ISC, Apache-2.0, BSL-1.0 and PostgreSQL licenses require keeping copyright and license notices when the software is redistributed. Apache-2.0 also requires keeping NOTICE files, for example Neon's `NOTICE`.
 - **Runtime downloads:** pgrag downloads ONNX model weights at runtime (MIT and Apache-2.0 per their model cards), and pg_duckdb can install DuckDB extensions at runtime.
   - Neither is part of the image.
-  - The pgrag download URL compiled into the image points to a Neon-internal host. Outside Neon's infrastructure, the model-backed pgrag functions cannot fetch their models unless the image is rebuilt with a different `REMOTE_ONNX_URL`.
+  - The pgrag download URLs compiled into the image point to Hugging Face (`huggingface.co`, pinned commits), so the compute needs outbound HTTPS for the model-backed pgrag functions.
 
 ## Unverified
 
 - **Bundled code inside large components was not audited:** third-party code vendored inside DuckDB, ONNX Runtime, V8, RDKit and PostGIS, the full crates.io dependency trees of the pgrx extensions and the Neon binaries, and the Go module dependencies of the three exporters.
 - **Debian package licenses** are quoted from general knowledge of the packages, not checked one by one against the copyright files in the image.
-- **pgrag model files:** the license of the ONNX files served from the Neon-internal `REMOTE_ONNX_URL` is assumed to match the upstream Hugging Face models (BAAI/bge-small-en-v1.5: MIT; jinaai/jina-reranker-v1-tiny-en: Apache-2.0). The hosted files themselves were not inspected.
+- **pgrag model files:** jinaai/jina-reranker-v1-tiny-en is tagged Apache-2.0 on Hugging Face. The Xenova/bge-small-en-v1.5 repository carries no license tag; it is a conversion of BAAI/bge-small-en-v1.5, which is MIT, and is assumed to carry the same license.
 - **PostgreSQL Anonymizer data:** the license of the sample/fake-data files shipped under `data/` was not checked separately. The project as a whole is PostgreSQL-licensed.

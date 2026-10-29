@@ -128,6 +128,20 @@ RUN  --mount=type=secret,uid=1000,id=SUBZERO_ACCESS_TOKEN \
       --locked --release \
     && mold -run make -j $(nproc) -s neon-pg-ext-v18
 
+# The release profile keeps full debug info (see Cargo.toml), which is most of each
+# binary: pageserver is 407MB with it and 74MB without. Symbols stay, so backtraces still
+# name functions. The storage image needs from the Neon extensions only what walredo
+# loads (neon_walredo, neon_rmgr); neon.so and friends belong to the compute image.
+RUN set -e \
+    && strip --strip-debug target/release/pg_sni_router target/release/pageserver \
+        target/release/pagectl target/release/safekeeper target/release/storage_broker \
+        target/release/storage_controller target/release/proxy target/release/endpoint_storage \
+        target/release/neon_local target/release/storage_scrubber \
+    && rm -f pg_install/v18/lib/postgresql/neon.so pg_install/v18/lib/postgresql/neon_utils.so \
+        pg_install/v18/lib/postgresql/neon_test_utils.so pg_install/v18/lib/*.a \
+    && find pg_install/v18/bin pg_install/v18/lib -type f \( -perm -u+x -o -name '*.so*' \) \
+        -exec sh -c 'for f; do strip --strip-debug "$f" 2>/dev/null || true; done' _ {} +
+
 # Assemble the final image
 FROM $BASE_IMAGE_SHA
 WORKDIR /data
@@ -135,24 +149,13 @@ WORKDIR /data
 RUN set -e \
     && echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
     && apt update \
-    && apt install -y \
-        libreadline-dev \
-        libseccomp-dev \
+    && apt install -y --no-install-recommends \
+        libreadline8 \
+        libseccomp2 \
+        libssl3 \
+        libstdc++6 \
         ca-certificates \
-        openssl \
-        unzip \
         curl \
-    && ARCH=$(uname -m) \
-    && if [ "$ARCH" = "x86_64" ]; then \
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
-    else \
-        echo "Unsupported architecture: $ARCH" && exit 1; \
-    fi \
-    && unzip awscliv2.zip \
-    && ./aws/install \
-    && rm -rf aws awscliv2.zip \
     && rm -f /etc/apt/apt.conf.d/80-retries \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && useradd -d /data neon \
@@ -169,11 +172,6 @@ COPY --from=build --chown=neon:neon /home/nonroot/target/release/endpoint_storag
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/neon_local          /usr/local/bin
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/storage_scrubber    /usr/local/bin
 COPY --from=build /home/nonroot/pg_install/v18 /usr/local/v18/
-
-# Deprecated: Old deployment scripts use this tarball which contains all the Postgres binaries.
-# That's obsolete, since all the same files are also present under /usr/local/v*. But to keep the
-# old scripts working for now, create the tarball.
-RUN tar -C /usr/local -cvzf /data/postgres_install.tar.gz v18
 
 # By default, pageserver uses `.neon/` working directory in WORKDIR, so create one and fill it with the dummy config.
 # Now, when `docker run ... pageserver` is run, it can start without errors, yet will have some default dummy values.
