@@ -61,7 +61,17 @@ if ((${#unexpected[@]})); then
     die "unexpected regression failures: ${unexpected[*]}"
 fi
 
-dump() { dc exec -T neon-test-extensions /usr/local/pgsql/bin/pg_dump -h compute1 -p 55433 -U cloud_admin -d regression; }
+# A restart empties unlogged tables and resets their sequences (that is the init fork,
+# replayed through walredo), and pg_dump writes a random \restrict key, so those are left
+# out of the comparison.
+sql "select format('setval(%L,', format('%I.%I', n.nspname, c.relname)) from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace where c.relkind = 'S' and c.relpersistence = 'u'" \
+    regression > "${OUT}/unlogged-seqs"
+dump() {
+    dc exec -T neon-test-extensions /usr/local/pgsql/bin/pg_dump -h compute1 -p 55433 -U cloud_admin \
+        --no-unlogged-table-data -d regression |
+        grep -vE '^\\(un)?restrict ' | grep -vF -f "${OUT}/unlogged-seqs"
+}
 dump > "${OUT}/before.sql"
 echo "dumped $(wc -l < "${OUT}/before.sql") lines before restart"
 
