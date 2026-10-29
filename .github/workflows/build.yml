@@ -257,6 +257,11 @@ jobs:
         env:
           PRELOAD_EXTRA: pg_duckdb
         run: ci/duckdb-test.sh
+      - name: pgrag models (downloaded from Hugging Face on first use)
+        if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
+        env:
+          PRELOAD_EXTRA: rag_bge_small_en_v15,rag_jina_reranker_v1_tiny_en
+        run: ci/rag-model-test.sh
       - name: PostgreSQL regression suite, then restart the compute and compare
         if: ${{ !cancelled() && steps.smoke.outcome == 'success' }}
         run: ci/pg-regress-test.sh

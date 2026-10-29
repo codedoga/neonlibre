@@ -1363,7 +1363,7 @@ RUN cd exts/rag_bge_small_en_v15 && \
     fi; \
         sed -i 's/pgrx = "0.14.1"/pgrx = { version = "0.14.1", features = [ "unsafe-postgres" ] }/g' Cargo.toml && \
     ORT_LIB_LOCATION=/ext-src/onnxruntime-src/build/Linux \
-        REMOTE_ONNX_URL=http://pg-ext-s3-gateway.pg-ext-s3-gateway.svc.cluster.local/pgrag-data/bge_small_en_v15.onnx \
+        REMOTE_ONNX_URL=https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/ea104dacec62c0de699686887e3f920caeb4f3e3/onnx/model.onnx \
         cargo pgrx install --release --features remote_onnx && \
     echo "trusted = true" >> /usr/local/pgsql/share/extension/rag_bge_small_en_v15.control
 
@@ -1374,7 +1374,7 @@ RUN cd exts/rag_jina_reranker_v1_tiny_en && \
     fi; \
         sed -i 's/pgrx = "0.14.1"/pgrx = { version = "0.14.1", features = [ "unsafe-postgres" ] }/g' Cargo.toml && \
     ORT_LIB_LOCATION=/ext-src/onnxruntime-src/build/Linux \
-        REMOTE_ONNX_URL=http://pg-ext-s3-gateway.pg-ext-s3-gateway.svc.cluster.local/pgrag-data/jina_reranker_v1_tiny_en.onnx \
+        REMOTE_ONNX_URL=https://huggingface.co/jinaai/jina-reranker-v1-tiny-en/resolve/aca45de6945b5dc6399abcd2a9c55ded5dc9111f/onnx/model.onnx \
         cargo pgrx install --release --features remote_onnx && \
     echo "trusted = true" >> /usr/local/pgsql/share/extension/rag_jina_reranker_v1_tiny_en.control
 
@@ -2084,7 +2084,8 @@ RUN --mount=type=cache,uid=1000,target=/home/nonroot/.cargo/registry \
     cp target/release-line-debug-size-lto/compute_ctl \
        target/release-line-debug-size-lto/fast_import \
        target/release-line-debug-size-lto/local_proxy \
-       target-bin
+       target-bin && \
+    strip --strip-debug target-bin/*
 
 #########################################################################################
 #
@@ -2167,6 +2168,11 @@ RUN rm -r /usr/local/pgsql/include
 # can now remove these files - they must be included in other binaries by now
 # if they were to be used by other libraries.
 RUN rm /usr/local/pgsql/lib/lib*.a
+
+# Postgres and most extensions are built with -g (Postgres with -g3); the debug info is
+# about 40% of /usr/local/pgsql. Symbols stay, so backtraces still name functions.
+RUN find /usr/local/pgsql/bin /usr/local/pgsql/lib -type f \( -perm -u+x -o -name '*.so*' \) \
+        -exec sh -c 'for f; do strip --strip-debug "$f" 2>/dev/null || true; done' _ {} +
 
 #########################################################################################
 #
