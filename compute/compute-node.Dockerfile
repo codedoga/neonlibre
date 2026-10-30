@@ -437,7 +437,11 @@ RUN apt update && \
     && apt clean && rm -rf /var/lib/apt/lists/*
 COPY --from=plv8-src /ext-src/ /ext-src/
 # The Makefile guard keeps this stage a no-op should plv8-src ever skip a version.
-RUN if [ -f Makefile ]; then make DOCKER=1 -j $(getconf _NPROCESSORS_ONLN) v8; fi
+# GCC 14 (trixie) no longer pulls <algorithm> in transitively; V8 relies on it for std::find.
+RUN if [ -f Makefile ]; then \
+        sed -i '0,/^#include/s//#include <algorithm>\n#include/' deps/v8-cmake/v8/src/heap/cppgc/stats-collector.h && \
+        make DOCKER=1 -j $(getconf _NPROCESSORS_ONLN) v8; \
+    fi
 
 # Step 2: Build the PostgreSQL-dependent parts
 COPY --from=pg-build /usr/local/pgsql /usr/local/pgsql
@@ -1368,7 +1372,9 @@ RUN apt update && apt install --no-install-recommends --no-install-suggests -y \
 
 RUN . venv/bin/activate && \
     ./build.sh --config Release --parallel --cmake_generator Ninja \
-    --skip_submodule_sync --skip_tests --allow_running_as_root
+    --skip_submodule_sync --skip_tests --allow_running_as_root \
+    # GCC 14 (trixie) adds warnings, e.g. template-id-cdtor, that onnxruntime 1.18 builds with -Werror
+    --compile_no_warning_as_error
 
 WORKDIR /ext-src/pgrag-src
 RUN cd exts/rag && \
