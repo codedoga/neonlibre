@@ -5,7 +5,7 @@
 ARG REPOSITORY=ghcr.io/neondatabase
 ARG IMAGE=build-tools
 ARG TAG=pinned
-ARG DEBIAN_VERSION=bookworm
+ARG DEBIAN_VERSION=trixie
 ARG DEBIAN_FLAVOR=${DEBIAN_VERSION}-slim
 
 # Here are the INDEX DIGESTS for the images we use.
@@ -19,7 +19,8 @@ ARG DEBIAN_FLAVOR=${DEBIAN_VERSION}-slim
 #       -I | grep -i docker-content-digest
 # 3. As a next step, TODO(fedordikarev): create script and schedule workflow to run these checks
 #    and updates on regular bases and in automated way.
-ARG BOOKWORM_SLIM_SHA=sha256:40b107342c492725bc7aacbe93a49945445191ae364184a6d24fedb28172f6f7
+ARG TRIXIE_SLIM_SHA=sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+ARG BOOKWORM_SLIM_SHA=sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
 ARG BULLSEYE_SLIM_SHA=sha256:e831d9a884d63734fe3dd9c491ed9a5a3d4c6a6d32c5b14f2067357c49b0b7e1
 
 # Here we use ${var/search/replace} syntax, to check
@@ -27,6 +28,7 @@ ARG BULLSEYE_SLIM_SHA=sha256:e831d9a884d63734fe3dd9c491ed9a5a3d4c6a6d32c5b14f206
 # If var will match one the known images, we will replace it with the known sha.
 # If no match, than value will be unaffected, and will process with no-pinned image.
 ARG BASE_IMAGE_SHA=debian:${DEBIAN_FLAVOR}
+ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:trixie-slim/debian@$TRIXIE_SLIM_SHA}
 ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bookworm-slim/debian@$BOOKWORM_SLIM_SHA}
 ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bullseye-slim/debian@$BULLSEYE_SLIM_SHA}
 

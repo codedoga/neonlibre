@@ -2,8 +2,8 @@
 # This Dockerfile builds the compute image. It is built multiple times to produce
 # different images for each PostgreSQL major version.
 #
-# We use Debian as the base for all the steps. The production images use Debian bookworm
-# for v17 and v18, and Debian bullseye for older PostgreSQL versions.
+# We use Debian as the base for all the steps. The neonlibre images use Debian trixie;
+# bookworm and bullseye (older PostgreSQL versions) are kept from upstream.
 #
 # ## Intermediary layers
 #
@@ -78,7 +78,7 @@
 
 ARG PG_VERSION
 ARG BUILD_TAG
-ARG DEBIAN_VERSION=bookworm
+ARG DEBIAN_VERSION=trixie
 ARG DEBIAN_FLAVOR=${DEBIAN_VERSION}-slim
 
 # Here are the INDEX DIGESTS for the images we use.
@@ -92,7 +92,8 @@ ARG DEBIAN_FLAVOR=${DEBIAN_VERSION}-slim
 #       -I | grep -i docker-content-digest
 # 3. As a next step, TODO(fedordikarev): create script and schedule workflow to run these checks
 #    and updates on regular bases and in automated way.
-ARG BOOKWORM_SLIM_SHA=sha256:40b107342c492725bc7aacbe93a49945445191ae364184a6d24fedb28172f6f7
+ARG TRIXIE_SLIM_SHA=sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+ARG BOOKWORM_SLIM_SHA=sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
 ARG BULLSEYE_SLIM_SHA=sha256:e831d9a884d63734fe3dd9c491ed9a5a3d4c6a6d32c5b14f2067357c49b0b7e1
 
 # Here we use ${var/search/replace} syntax, to check
@@ -100,6 +101,7 @@ ARG BULLSEYE_SLIM_SHA=sha256:e831d9a884d63734fe3dd9c491ed9a5a3d4c6a6d32c5b14f206
 # If var will match one the known images, we will replace it with the known sha.
 # If no match, than value will be unaffected, and will process with no-pinned image.
 ARG BASE_IMAGE_SHA=debian:${DEBIAN_FLAVOR}
+ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:trixie-slim/debian@$TRIXIE_SLIM_SHA}
 ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bookworm-slim/debian@$BOOKWORM_SLIM_SHA}
 ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bullseye-slim/debian@$BULLSEYE_SLIM_SHA}
 
@@ -139,6 +141,9 @@ RUN case $DEBIAN_VERSION in \
       # Version-specific installs for Bookworm (PG17, PG18):
       bookworm) \
         VERSION_INSTALLS="cmake libstdc++-12-dev"; \
+      ;; \
+      trixie) \
+        VERSION_INSTALLS="cmake libstdc++-14-dev"; \
       ;; \
       *) \
         echo "Unknown Debian version ${DEBIAN_VERSION}" && exit 1 \
@@ -239,6 +244,11 @@ ARG PG_VERSION
 # Use new version only for v17
 WORKDIR /ext-src
 RUN case "${DEBIAN_VERSION}" in \
+    # trixie ships CGAL 6, which SFCGAL 1.x does not build against.
+    "trixie") \
+        export SFCGAL_VERSION=2.0.0 \
+        export SFCGAL_CHECKSUM=11843953f49e7e4432c42fd27d54e1ff7ca55d0cc72507725c2a5d840c2c6535 \
+    ;; \
     "bookworm") \
         export SFCGAL_VERSION=1.4.1 \
         export SFCGAL_CHECKSUM=1800c8a26241588f11cddcf433049e9b9aea902e923414d2ecef33a3295626c3 \
@@ -417,10 +427,13 @@ RUN case "${PG_VERSION:?}" in \
 # (The V8 engine takes a very long time to build)
 FROM build-deps AS plv8-build
 ARG PG_VERSION
+ARG DEBIAN_VERSION
 WORKDIR /ext-src/plv8-src
+# trixie dropped libncurses5
 RUN apt update && \
     apt install --no-install-recommends --no-install-suggests -y \
-    ninja-build python3-dev libncurses5 binutils clang \
+    ninja-build python3-dev binutils clang \
+    $([ "${DEBIAN_VERSION}" = trixie ] && echo libncurses6 || echo libncurses5) \
     && apt clean && rm -rf /var/lib/apt/lists/*
 COPY --from=plv8-src /ext-src/ /ext-src/
 # The Makefile guard keeps this stage a no-op should plv8-src ever skip a version.
@@ -1039,9 +1052,20 @@ RUN case "${PG_VERSION:?}" in \
 
 FROM pg-build AS rdkit-build
 ARG PG_VERSION
+ARG DEBIAN_VERSION
 # rdkit >= Release_2025_03 sets RDK_BOOST_VERSION 1.81.0, and bookworm only ships
 # Boost 1.74, so the v18 build pulls 1.83 from bookworm-backports instead.
-RUN if [ "${PG_VERSION:?}" = "v18" ]; then \
+# trixie ships Boost 1.83 itself.
+RUN if [ "${DEBIAN_VERSION}" = "trixie" ]; then \
+        apt update && \
+        apt install --no-install-recommends --no-install-suggests -y \
+            libboost1.83-dev \
+            libboost-iostreams1.83-dev \
+            libboost-regex1.83-dev \
+            libboost-serialization1.83-dev \
+            libboost-system1.83-dev \
+            libeigen3-dev; \
+    elif [ "${PG_VERSION:?}" = "v18" ]; then \
         echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list && \
         apt update && \
         apt install --no-install-recommends --no-install-suggests -y -t bookworm-backports \
@@ -2209,6 +2233,9 @@ RUN apt-get update && case $DEBIAN_VERSION in \
       bookworm) \
         apt-get install -y libgdal32 libproj25 time; \
       ;; \
+      trixie) \
+        apt-get install -y libgdal36 libproj25 time; \
+      ;; \
       *) \
         echo "Unknown Debian version ${DEBIAN_VERSION}" && exit 1 \
       ;; \
@@ -2287,7 +2314,7 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 # libreadline8 for psql
 # liblz4-1 for lz4
 # libossp-uuid16 for extension ossp-uuid
-# libgeos, libsfcgal1, and libprotobuf-c1 for PostGIS
+# libgeos, libsfcgal, and libprotobuf-c1 for PostGIS
 # libxml2, libxslt1.1 for xml2
 # libzstd1 for zstd
 # libboost* for rdkit
@@ -2301,20 +2328,27 @@ RUN apt update && \
       # libicu67, locales for collations (including ICU and plpgsql_check)
       # libgdal28, libproj19 for PostGIS
       bullseye) \
-        VERSION_INSTALLS="libicu67 libgdal28 libproj19"; \
+        VERSION_INSTALLS="libicu67 libgdal28 libproj19 libsfcgal1"; \
       ;; \
       # Version-specific installs for Bookworm (PG17, PG18):
       # libicu72, locales for collations (including ICU and plpgsql_check)
       # libgdal32, libproj25 for PostGIS
       bookworm) \
-        VERSION_INSTALLS="libicu72 libgdal32 libproj25"; \
+        VERSION_INSTALLS="libicu72 libgdal32 libproj25 libsfcgal1"; \
+      ;; \
+      # Version-specific installs for Trixie:
+      # libicu76, libgdal36, libproj25, and libsfcgal2 (SFCGAL 2.0, see postgis-src)
+      trixie) \
+        VERSION_INSTALLS="libicu76 libgdal36 libproj25 libsfcgal2"; \
       ;; \
       *) \
         echo "Unknown Debian version ${DEBIAN_VERSION}" && exit 1 \
       ;; \
     esac && \
-    # rdkit on v18 links Boost 1.83 from bookworm-backports (see rdkit-build)
-    if [ "${PG_VERSION:?}" = "v18" ]; then \
+    # rdkit links Boost 1.83: trixie's own, or bookworm-backports on v18 (see rdkit-build)
+    if [ "${DEBIAN_VERSION}" = "trixie" ]; then \
+        BOOST_VERSION=1.83.0; \
+    elif [ "${PG_VERSION:?}" = "v18" ]; then \
         echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list && \
         apt update && \
         BOOST_VERSION=1.83.0; \
@@ -2336,7 +2370,6 @@ RUN apt update && \
         libossp-uuid16 \
         libprotobuf-c1 \
         libreadline8 \
-        libsfcgal1 \
         libxml2 \
         libxslt1.1 \
         libzstd1 \
