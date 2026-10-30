@@ -642,10 +642,10 @@ FROM build-deps AS hypopg-src
 ARG PG_VERSION
 
 # HypoPG 1.4.1 supports v17
-# last release 1.4.1 - Apr 28, 2024
+# 1.4.2 (Jun 2025) passes CompareType to get_ordering_op_properties on v18; GCC 14 rejects 1.4.1
 WORKDIR /ext-src
-RUN wget https://github.com/HypoPG/hypopg/archive/refs/tags/1.4.1.tar.gz -O hypopg.tar.gz && \
-    echo "9afe6357fd389d8d33fad81703038ce520b09275ec00153c6c89282bcdedd6bc hypopg.tar.gz" | sha256sum --check && \
+RUN wget https://github.com/HypoPG/hypopg/archive/refs/tags/1.4.2.tar.gz -O hypopg.tar.gz && \
+    echo "30596ca3d71b33af53326cdf27ed9fc794dc6db33864c531fde1e48c1bf7de7d hypopg.tar.gz" | sha256sum --check && \
     mkdir hypopg-src && cd hypopg-src && tar xzf ../hypopg.tar.gz --strip-components=1 -C .
 
 FROM pg-build AS hypopg-build
@@ -841,10 +841,10 @@ FROM build-deps AS hll-src
 ARG PG_VERSION
 
 # not version-specific
-# last release v2.18 - Aug 29, 2023
+# v2.19 (Oct 2025) builds with GCC 14's -Wmissing-variable-declarations under PG18's -Werror flags
 WORKDIR /ext-src
-RUN wget https://github.com/citusdata/postgresql-hll/archive/refs/tags/v2.18.tar.gz -O hll.tar.gz && \
-    echo "e2f55a6f4c4ab95ee4f1b4a2b73280258c5136b161fe9d059559556079694f0e hll.tar.gz" | sha256sum --check && \
+RUN wget https://github.com/citusdata/postgresql-hll/archive/refs/tags/v2.19.tar.gz -O hll.tar.gz && \
+    echo "d63d56522145f2d737e0d056c9cfdfe3e8b61008c12ca4c45bde7d9b942f9c46 hll.tar.gz" | sha256sum --check && \
     mkdir hll-src && cd hll-src && tar xzf ../hll.tar.gz --strip-components=1 -C .
 
 FROM pg-build AS hll-build
