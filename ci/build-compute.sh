@@ -26,7 +26,7 @@ docker buildx build \
     --platform "linux/${arch}" \
     -f "${ROOT}/compute/compute-node.Dockerfile" \
     --build-arg PG_VERSION="v${pg}" \
-    --build-arg DEBIAN_VERSION=bookworm \
+    --build-arg DEBIAN_VERSION=trixie \
     --build-arg BUILD_TAG="${BUILD_TAG:-ci}" \
     --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY:-codedoga/neonlibre}" \
     "${args[@]}" --push -t "${ref}" --progress=plain "${ROOT}"

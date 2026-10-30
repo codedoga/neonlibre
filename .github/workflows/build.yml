@@ -201,7 +201,7 @@ jobs:
             REPOSITORY=ghcr.io/neondatabase
             IMAGE=build-tools
             TAG=pinned-bookworm
-            DEBIAN_VERSION=bookworm
+            DEBIAN_VERSION=trixie
             GIT_VERSION=${{ github.sha }}
             BUILD_TAG=${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
