@@ -86,7 +86,7 @@ def main():
     refs = {}  # key -> image ref; checked against the registry in one go below
     hashes = {}
     for pg in PG_VERSIONS:
-        args = {"PG_VERSION": f"v{pg}", "DEBIAN_VERSION": "bookworm"}
+        args = {"PG_VERSION": f"v{pg}", "DEBIAN_VERSION": "trixie"}
         for t in BASES + HEAVY + ["", "extension-tests"]:
             hashes[pg, t] = input_hash(COMPUTE_DOCKERFILE, t, args, [f"vendor/postgres-v{pg}"],
                                        ignore=CONTEXT_IGNORE)
@@ -96,7 +96,7 @@ def main():
             refs[pg, "", arch] = f"{reg}/compute-v{pg}:{hashes[pg, '']}-{arch}"
             refs[pg, "extension-tests", arch] = f"{reg}/test-extensions-v{pg}:{hashes[pg, 'extension-tests']}-{arch}"
         refs[pg, "tested"] = f"{reg}/compute-v{pg}:{hashes[pg, '']}"
-    storage = input_hash("Dockerfile", "", {"DEBIAN_VERSION": "bookworm"},
+    storage = input_hash("Dockerfile", "", {"DEBIAN_VERSION": "trixie"},
                          [f"vendor/postgres-v{v}" for v in ["14", "15", "16", "17", "18"]],
                          ignore=CONTEXT_IGNORE)
     for arch in ARCHES:
