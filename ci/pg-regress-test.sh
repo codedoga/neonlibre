@@ -21,7 +21,8 @@ export COMPOSE_PROFILES=test-extensions
 #  collate.icu.utf8: initdb runs in the storage image, whose PostgreSQL uses the static
 #    ICU 67 of Neon's build-tools image, while the compute uses Debian's ICU 72, so every
 #    ICU collation reports a version mismatch. Inherited from upstream Neon.
-EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8}"
+#  misc_functions: since 18.7 it checks en-x-icu, which hits the same ICU mismatch.
+EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8 misc_functions}"
 
 R=/postgres/src/test/regress
 OUT="$(mktemp -d)"
