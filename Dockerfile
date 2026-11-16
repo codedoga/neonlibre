@@ -43,8 +43,16 @@ ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bullseye-slim/debian@$BULLSEYE_SLIM_S
 # - Build all postgres versions, depending on just the contents of vendor/
 # - Use cargo chef to build all rust dependencies
 
+# 0. build-tools plus the lz4/zstd headers that the Makefile's --with-lz4 --with-zstd needs,
+# which the pinned upstream image lacks. Every stage that runs Postgres' configure derives from it.
+FROM $REPOSITORY/$IMAGE:$TAG AS build-base
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends liblz4-dev libzstd-dev \
+    && rm -rf /var/lib/apt/lists/*
+USER nonroot:nonroot
+
 # 1. Build all postgres versions
-FROM $REPOSITORY/$IMAGE:$TAG AS pg-build
+FROM build-base AS pg-build
 WORKDIR /home/nonroot
 
 COPY --chown=nonroot vendor/postgres-v14 vendor/postgres-v14
@@ -79,7 +87,7 @@ RUN --mount=type=secret,uid=1000,id=SUBZERO_ACCESS_TOKEN \
     && cargo chef prepare --recipe-path recipe.json
 
 # Main build image
-FROM $REPOSITORY/$IMAGE:$TAG AS build
+FROM build-base AS build
 WORKDIR /home/nonroot
 ARG GIT_VERSION=local
 ARG BUILD_TAG
@@ -156,6 +164,8 @@ RUN set -e \
         libseccomp2 \
         libssl3 \
         libstdc++6 \
+        liblz4-1 \
+        libzstd1 \
         ca-certificates \
         curl \
     && rm -f /etc/apt/apt.conf.d/80-retries \

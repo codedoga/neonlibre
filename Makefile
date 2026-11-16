@@ -46,6 +46,9 @@ else
 	$(error Bad build type '$(BUILD_TYPE)', see Makefile for options)
 endif
 
+# Match compute-node.Dockerfile; v14 has no zstd, its configure only warns about the unknown option
+PG_CONFIGURE_OPTS += --with-lz4 --with-zstd
+
 ifeq ($(WITH_SANITIZERS),yes)
 	PG_CFLAGS += -fsanitize=address -fsanitize=undefined -fno-sanitize-recover
 	COPT += -Wno-error # to avoid failing on warnings induced by sanitizers
@@ -75,7 +78,7 @@ else ifeq ($(UNAME_S),Darwin)
 		# It can be configured with OPENSSL_PREFIX variable
 		OPENSSL_PREFIX := $(shell brew --prefix openssl@3)
 		PG_CONFIGURE_OPTS += --with-includes=$(OPENSSL_PREFIX)/include --with-libraries=$(OPENSSL_PREFIX)/lib
-		PG_CONFIGURE_OPTS += PKG_CONFIG_PATH=$(shell brew --prefix icu4c)/lib/pkgconfig
+		PG_CONFIGURE_OPTS += PKG_CONFIG_PATH=$(shell brew --prefix icu4c)/lib/pkgconfig:$(shell brew --prefix lz4)/lib/pkgconfig:$(shell brew --prefix zstd)/lib/pkgconfig
 		# macOS already has bison and flex in the system, but they are old and result in postgres-v14 target failure
 		# brew formulae are keg-only and not symlinked into HOMEBREW_PREFIX, force their usage
 		EXTRA_PATH_OVERRIDES += $(shell brew --prefix bison)/bin/:$(shell brew --prefix flex)/bin/:
