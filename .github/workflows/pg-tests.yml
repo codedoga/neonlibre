@@ -123,7 +123,12 @@ jobs:
             build
           # The -v2 busts a poisoned entry: a cache key is never overwritten once
           # it exists, so a half-written tree in there is served forever.
-          key: pg-${{ runner.os }}-${{ env.PG_VERSION }}-v2-${{ hashFiles('vendor/revisions.json') }}
+          # -v3: trees cached before --with-lz4 --with-zstd would not be reconfigured.
+          key: pg-${{ runner.os }}-${{ env.PG_VERSION }}-v3-${{ hashFiles('vendor/revisions.json') }}
+
+      - name: Install lz4 and zstd headers
+        # The pinned build-tools image lacks them; the Makefile configures with --with-lz4 --with-zstd.
+        run: apt-get update && apt-get install -y --no-install-recommends liblz4-dev libzstd-dev
 
       - name: Build Postgres and the Neon extensions
         run: |
@@ -244,6 +249,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: neon-build
+
+      - name: Install lz4 and zstd libraries
+        # The built Postgres links them; this fresh container's image lacks them.
+        run: apt-get update && apt-get install -y --no-install-recommends liblz4-1 libzstd1
 
       - name: Unpack the build
         run: |

@@ -56,6 +56,12 @@ COPY --chown=nonroot Makefile Makefile
 COPY --chown=nonroot postgres.mk postgres.mk
 COPY --chown=nonroot scripts/ninstall.sh scripts/ninstall.sh
 
+# The pinned upstream build-tools image lacks these, and the Makefile configures with --with-lz4 --with-zstd
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends liblz4-dev libzstd-dev \
+    && rm -rf /var/lib/apt/lists/*
+USER nonroot:nonroot
+
 ENV BUILD_TYPE=release
 # Only v18 is built and shipped. postgres_ffi's bindgen still needs the headers of
 # every version it knows, which postgres-headers-install provides cheaply.
@@ -156,6 +162,8 @@ RUN set -e \
         libseccomp2 \
         libssl3 \
         libstdc++6 \
+        liblz4-1 \
+        libzstd1 \
         ca-certificates \
         curl \
     && rm -f /etc/apt/apt.conf.d/80-retries \
