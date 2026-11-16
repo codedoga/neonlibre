@@ -43,8 +43,16 @@ ARG BASE_IMAGE_SHA=${BASE_IMAGE_SHA/debian:bullseye-slim/debian@$BULLSEYE_SLIM_S
 # - Build all postgres versions, depending on just the contents of vendor/
 # - Use cargo chef to build all rust dependencies
 
+# 0. build-tools plus the lz4/zstd headers that the Makefile's --with-lz4 --with-zstd needs,
+# which the pinned upstream image lacks. Every stage that runs Postgres' configure derives from it.
+FROM $REPOSITORY/$IMAGE:$TAG AS build-base
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends liblz4-dev libzstd-dev \
+    && rm -rf /var/lib/apt/lists/*
+USER nonroot:nonroot
+
 # 1. Build all postgres versions
-FROM $REPOSITORY/$IMAGE:$TAG AS pg-build
+FROM build-base AS pg-build
 WORKDIR /home/nonroot
 
 COPY --chown=nonroot vendor/postgres-v14 vendor/postgres-v14
@@ -55,12 +63,6 @@ COPY --chown=nonroot vendor/postgres-v18 vendor/postgres-v18
 COPY --chown=nonroot Makefile Makefile
 COPY --chown=nonroot postgres.mk postgres.mk
 COPY --chown=nonroot scripts/ninstall.sh scripts/ninstall.sh
-
-# The pinned upstream build-tools image lacks these, and the Makefile configures with --with-lz4 --with-zstd
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends liblz4-dev libzstd-dev \
-    && rm -rf /var/lib/apt/lists/*
-USER nonroot:nonroot
 
 ENV BUILD_TYPE=release
 # Only v18 is built and shipped. postgres_ffi's bindgen still needs the headers of
@@ -85,7 +87,7 @@ RUN --mount=type=secret,uid=1000,id=SUBZERO_ACCESS_TOKEN \
     && cargo chef prepare --recipe-path recipe.json
 
 # Main build image
-FROM $REPOSITORY/$IMAGE:$TAG AS build
+FROM build-base AS build
 WORKDIR /home/nonroot
 ARG GIT_VERSION=local
 ARG BUILD_TAG
