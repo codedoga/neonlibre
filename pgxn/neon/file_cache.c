@@ -36,7 +36,11 @@
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#if PG_VERSION_NUM < 190000
 #include "utils/dynahash.h"
+#else
+#include "utils/hsearch.h"
+#endif
 #include "utils/guc.h"
 
 #if PG_VERSION_NUM >= 150000

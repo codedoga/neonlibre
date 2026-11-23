@@ -21,7 +21,11 @@
 #include "storage/ipc.h"
 #include "storage/shmem.h"
 #include "catalog/pg_tablespace_d.h"
+#if PG_VERSION_NUM < 190000
 #include "utils/dynahash.h"
+#else
+#include "utils/hsearch.h"
+#endif
 #include "utils/guc.h"
 
 typedef struct
