@@ -573,7 +573,10 @@ RUN mkdir build && cd build && \
     rm -rf build
 
 WORKDIR /ext-src/h3-pg-src
+# v19: cmake sees empty `pg_config --version`; temporary diagnostics
 RUN ls -l && \
+    which pg_config && pg_config --version && pg_config --pgxs && pg_config --configure | head -c 300 && \
+    cmake -B /tmp/h3dbg -DPostgreSQL_CONFIG=pg_config . 2>&1 | tail -30; \
     make -j $(getconf _NPROCESSORS_ONLN) && \
     make -j $(getconf _NPROCESSORS_ONLN) install && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/h3.control && \
