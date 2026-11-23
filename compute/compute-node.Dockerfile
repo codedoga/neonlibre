@@ -573,10 +573,9 @@ RUN mkdir build && cd build && \
     rm -rf build
 
 WORKDIR /ext-src/h3-pg-src
-# v19: cmake sees empty `pg_config --version`; temporary diagnostics
-RUN ( printf 'execute_process(COMMAND pg_config --version RESULT_VARIABLE r OUTPUT_VARIABLE o ERROR_VARIABLE e)\nmessage("DIAG rc=[${r}] out=[${o}] err=[${e}]")\nexecute_process(COMMAND /usr/local/pgsql/bin/pg_config --version RESULT_VARIABLE r OUTPUT_VARIABLE o ERROR_VARIABLE e)\nmessage("DIAG abs rc=[${r}] out=[${o}] err=[${e}]")\n' > /tmp/d.cmake; cmake -P /tmp/d.cmake 2>&1; cmake -B /tmp/h3dbg -DPostgreSQL_CONFIG=pg_config . 2>&1 | tail -15 ) || true
-RUN make -j $(getconf _NPROCESSORS_ONLN) && \
-    make -j $(getconf _NPROCESSORS_ONLN) install && \
+# absolute pg_config: cmake's FindPostgreSQL got an empty --version with the bare name on v19
+RUN make -j $(getconf _NPROCESSORS_ONLN) PG_CONFIG=/usr/local/pgsql/bin/pg_config && \
+    make -j $(getconf _NPROCESSORS_ONLN) install PG_CONFIG=/usr/local/pgsql/bin/pg_config && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/h3.control && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/h3_postgis.control
 
