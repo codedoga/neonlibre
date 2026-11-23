@@ -19,6 +19,8 @@
 
 #include "access/parallel.h"
 #include "access/xlog.h"
+#include "catalog/pg_type.h"
+#include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "common/hashfn.h"
