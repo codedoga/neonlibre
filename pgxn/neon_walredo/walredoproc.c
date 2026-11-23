@@ -101,6 +101,7 @@
 #if PG_MAJORVERSION_NUM >= 18
 #include "storage/aio_subsys.h"
 #endif
+#include "storage/fd.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 #include "storage/dsm.h"
@@ -169,7 +170,6 @@ static XLogReaderState *reader_state;
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <errno.h>
-#include <sys/stat.h>
 
 static int
 close_range_syscall(unsigned int start_fd, unsigned int count, unsigned int flags)
@@ -592,7 +592,7 @@ CreateFakeSharedMemoryAndSemaphores(void)
 				 errmsg("[neon-wal-redo] can not read current directory name")));
 	DataDir = cwd;
 	/* AsyncShmemInit scans pg_notify; cwd is an empty scratch dir */
-	if (mkdir("pg_notify", 0700) < 0 && errno != EEXIST)
+	if (MakePGDirectory("pg_notify") < 0 && errno != EEXIST)
 		ereport(FATAL,
 				(errcode_for_file_access(),
 				 errmsg("[neon-wal-redo] could not create pg_notify: %m")));
