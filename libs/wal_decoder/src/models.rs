@@ -236,6 +236,10 @@ pub enum MultiXactRecord {
     ZeroPage(MultiXactZeroPage),
     Create(XlMultiXactCreate),
     Truncate(XlMultiXactTruncate),
+    // PG19 (64-bit MultiXactOffset). New variants go last: bincode encodes the variant
+    // index, so the encoding of the variants above stays unchanged.
+    CreateV19(postgres_ffi::walrecord::v19::XlMultiXactCreate),
+    TruncateV19(postgres_ffi::walrecord::v19::XlMultiXactTruncate),
 }
 
 #[derive(Clone, Serialize, Deserialize)]

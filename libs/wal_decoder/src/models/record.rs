@@ -61,6 +61,20 @@ pub enum NeonWalRecord {
     /// Set bits in heap visibility map for one heap block ('flags' is bitmap of bits to set)
     SetVisibilityMapFlags { heap_blkno: u32, flags: u8 },
 
+    /// PG19 (64-bit MultiXactOffset, 8-byte offsets SLRU entries): set this multixact's
+    /// offset and, when it lives on the same page, the next multixact's offset.
+    /// Separate variant so existing v14..v18 records keep their encoding.
+    MultixactOffsetCreateV19 {
+        mid: MultiXactId,
+        moff: u64,
+        next_moff: Option<u64>,
+    },
+    /// PG19 variant of `MultixactMembersCreate` with a 64-bit starting offset.
+    MultixactMembersCreateV19 {
+        moff: u64,
+        members: Vec<MultiXactMember>,
+    },
+
     /// A testing record for unit testing purposes. It supports append data to an existing image, or clear it.
     #[cfg(feature = "testing")]
     Test {

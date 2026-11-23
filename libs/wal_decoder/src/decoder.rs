@@ -911,15 +911,19 @@ impl MetadataRecord {
                 },
             ))));
         } else if info == pg_constants::XLOG_MULTIXACT_CREATE_ID {
-            let xlrec = XlMultiXactCreate::decode(buf);
-            return Ok(Some(MetadataRecord::MultiXact(MultiXactRecord::Create(
-                xlrec,
-            ))));
+            let rec = if pg_version >= PgMajorVersion::PG19 {
+                MultiXactRecord::CreateV19(v19::XlMultiXactCreate::decode(buf))
+            } else {
+                MultiXactRecord::Create(XlMultiXactCreate::decode(buf))
+            };
+            return Ok(Some(MetadataRecord::MultiXact(rec)));
         } else if info == pg_constants::XLOG_MULTIXACT_TRUNCATE_ID {
-            let xlrec = XlMultiXactTruncate::decode(buf);
-            return Ok(Some(MetadataRecord::MultiXact(MultiXactRecord::Truncate(
-                xlrec,
-            ))));
+            let rec = if pg_version >= PgMajorVersion::PG19 {
+                MultiXactRecord::TruncateV19(v19::XlMultiXactTruncate::decode(buf))
+            } else {
+                MultiXactRecord::Truncate(XlMultiXactTruncate::decode(buf))
+            };
+            return Ok(Some(MetadataRecord::MultiXact(rec)));
         }
 
         Ok(None)

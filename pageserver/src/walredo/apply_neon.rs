@@ -290,6 +290,68 @@ pub(crate) fn apply_in_neon(
                 LittleEndian::write_u32(&mut page[memberoff..memberoff + 4], member.xid);
             }
         }
+        NeonWalRecord::MultixactOffsetCreateV19 {
+            mid,
+            moff,
+            next_moff,
+        } => {
+            let (slru_kind, segno, blknum) = key.to_slru_block().context("invalid record")?;
+            assert_eq!(
+                slru_kind,
+                SlruKind::MultiXactOffsets,
+                "MultixactOffsetCreateV19 record with unexpected key {key}"
+            );
+            // PG19 RecordNewMultiXact(): 8-byte entries, BLCKSZ / 8 per page.
+            let per_page = pg_constants::MULTIXACT_OFFSETS_PER_PAGE_V19 as u32;
+            let pageno = mid / per_page;
+            let entryno = (mid % per_page) as usize;
+            assert!(
+                segno == pageno / pg_constants::SLRU_PAGES_PER_SEGMENT
+                    && blknum == pageno % pg_constants::SLRU_PAGES_PER_SEGMENT,
+                "MultixactOffsetCreateV19 record for multi-xid {mid} with unexpected key {key}"
+            );
+            let offset = entryno * 8;
+            LittleEndian::write_u64(&mut page[offset..offset + 8], *moff);
+            if let Some(next_moff) = next_moff {
+                // The caller only sets next_moff when both entries share a page.
+                assert!(
+                    entryno + 1 < per_page as usize,
+                    "MultixactOffsetCreateV19 record for multi-xid {mid} crosses a page boundary"
+                );
+                LittleEndian::write_u64(&mut page[offset + 8..offset + 16], *next_moff);
+            }
+        }
+        NeonWalRecord::MultixactMembersCreateV19 { moff, members } => {
+            let (slru_kind, segno, blknum) = key.to_slru_block().context("invalid record")?;
+            assert_eq!(
+                slru_kind,
+                SlruKind::MultiXactMembers,
+                "MultixactMembersCreateV19 record with unexpected key {key}"
+            );
+            let per_page = pg_constants::MULTIXACT_MEMBERS_PER_PAGE as u64;
+            let pages_per_segment = u64::from(pg_constants::SLRU_PAGES_PER_SEGMENT);
+            for (i, member) in members.iter().enumerate() {
+                let offset = moff + i as u64;
+                let pageno = offset / per_page;
+                assert!(
+                    u64::from(segno) == pageno / pages_per_segment
+                        && u64::from(blknum) == pageno % pages_per_segment,
+                    "MultixactMembersCreateV19 record for offset {moff} with unexpected key {key}"
+                );
+                // A page holds whole member groups, so the in-page position depends only on
+                // offset % MULTIXACT_MEMBERS_PER_PAGE and the 32-bit helpers apply.
+                let inpage = (offset % per_page) as u32;
+                let memberoff = mx_offset_to_member_offset(inpage);
+                let flagsoff = mx_offset_to_flags_offset(inpage);
+                let bshift = mx_offset_to_flags_bitshift(inpage);
+
+                let mut flagsval = LittleEndian::read_u32(&page[flagsoff..flagsoff + 4]);
+                flagsval &= !(((1 << pg_constants::MXACT_MEMBER_BITS_PER_XACT) - 1) << bshift);
+                flagsval |= member.status << bshift;
+                LittleEndian::write_u32(&mut page[flagsoff..flagsoff + 4], flagsval);
+                LittleEndian::write_u32(&mut page[memberoff..memberoff + 4], member.xid);
+            }
+        }
         NeonWalRecord::AuxFile { .. } => {
             // No-op: this record will never be created in aux v2.
             warn!("AuxFile record should not be created in aux v2");
@@ -323,4 +385,55 @@ pub(crate) fn apply_in_neon(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::BufMut;
+    use pageserver_api::key::slru_block_to_key;
+    use postgres_ffi::walrecord::v19::XlMultiXactCreate;
+
+    use super::*;
+
+    /// PG19: decode a hand-built xl_multixact_create (4 padding bytes, then uint64 moff) and
+    /// check the 8-byte / 1024-per-page offsets entry and the 64-bit members position.
+    #[test]
+    fn multixact_v19_create() {
+        let moff: u64 = (1 << 32) + 5; // does not fit the pre-v19 32-bit offset
+        let mut buf = BytesMut::new();
+        buf.put_u32_le(1025); // mid
+        buf.put_u32_le(0); // padding
+        buf.put_u64_le(moff);
+        buf.put_u32_le(1); // nmembers
+        buf.put_u32_le(777); // members[0].xid
+        buf.put_u32_le(3); // members[0].status
+        let rec = XlMultiXactCreate::decode(&mut buf.freeze());
+        assert_eq!((rec.mid, rec.moff, rec.nmembers), (1025, moff, 1));
+        assert_eq!((rec.members[0].xid, rec.members[0].status), (777, 3));
+
+        // Multixact 1025: offsets page 1, entry 1 -> bytes 8..16, next entry 16..24.
+        let mut page = BytesMut::zeroed(BLCKSZ as usize);
+        let key = slru_block_to_key(SlruKind::MultiXactOffsets, 0, 1);
+        let off_rec = NeonWalRecord::MultixactOffsetCreateV19 {
+            mid: rec.mid,
+            moff,
+            next_moff: Some(moff + 1),
+        };
+        apply_in_neon(&off_rec, Lsn(0), key, &mut page).unwrap();
+        assert_eq!(LittleEndian::read_u64(&page[8..16]), moff);
+        assert_eq!(LittleEndian::read_u64(&page[16..24]), moff + 1);
+        assert!(page[..8].iter().chain(&page[24..]).all(|&b| b == 0));
+
+        // Offset 2^32+5: members page 2625285 = segment 82040 block 5, in-page member 1041
+        // (group 260 -> flags at 5200, xid at 5208, bit shift 8).
+        let mut page = BytesMut::zeroed(BLCKSZ as usize);
+        let key = slru_block_to_key(SlruKind::MultiXactMembers, 82040, 5);
+        let mem_rec = NeonWalRecord::MultixactMembersCreateV19 {
+            moff,
+            members: rec.members,
+        };
+        apply_in_neon(&mem_rec, Lsn(0), key, &mut page).unwrap();
+        assert_eq!(LittleEndian::read_u32(&page[5200..5204]), 3 << 8);
+        assert_eq!(LittleEndian::read_u32(&page[5208..5212]), 777);
+    }
 }
