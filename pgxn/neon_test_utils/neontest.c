@@ -26,7 +26,11 @@
 #include "utils/builtins.h"
 #include "utils/pg_lsn.h"
 #include "utils/rel.h"
+#include "utils/timestamp.h"
 #include "utils/varlena.h"
+#if PG_MAJORVERSION_NUM >= 16
+#include "varatt.h"
+#endif
 #include "utils/wait_event.h"
 #include "../neon/pagestore_client.h"
 

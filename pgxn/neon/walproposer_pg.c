@@ -633,7 +633,7 @@ backpressure_throttling_impl(void)
 	const char *old_status;
 	int			len;
 
-	if (PointerIsValid(PrevProcessInterruptsCallback))
+	if ((PrevProcessInterruptsCallback != NULL))
 		retry = PrevProcessInterruptsCallback();
 
 	/*

@@ -265,7 +265,7 @@ neon_get_lwlsn_v(NRelFileInfo relfilenode, ForkNumber forknum,
 
 	Assert(LwLsnCache->lastWrittenLsnCacheSize != 0);
 	Assert(nblocks > 0);
-	Assert(PointerIsValid(lsns));
+	Assert((lsns != NULL));
 
 	LWLockAcquire(LastWrittenLsnLock, LW_SHARED);
 
