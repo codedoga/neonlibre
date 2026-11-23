@@ -17,6 +17,8 @@
 
 #include "neon_pgversioncompat.h"
 
+#include "access/htup_details.h"
+#include "port/pg_bitutils.h"
 #include "access/parallel.h"
 #include "access/xlog.h"
 #include "catalog/pg_type.h"
