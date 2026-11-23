@@ -9,6 +9,12 @@
 #include "fmgr.h"
 #include "storage/buf_internals.h"
 
+/* PG19 removed bits8 and Item */
+#if PG_MAJORVERSION_NUM >= 19
+typedef uint8 bits8;
+typedef void *Item;				/* PG19 removed Item */
+#endif
+
 #if PG_MAJORVERSION_NUM < 16
 typedef PGAlignedBlock PGIOAlignedBlock;
 #endif
