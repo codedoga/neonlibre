@@ -732,6 +732,9 @@ ARG PG_VERSION
 # 1.0 was ported to a PG18 beta whose ExecutorStart hook returned bool; that was
 # reverted before 18.0, so v18 uses e24652f8 (Mar 18, 2026), which drops it again.
 WORKDIR /ext-src
+# v19: e24652f8 targets a PG19 devel snapshot; 19.0 replaced QueryDesc.totaltime with
+# query_instr (allocated by the executor from query_instr_options).
+COPY compute/patches/online_advisor_v19.patch .
 RUN case "${PG_VERSION:?}" in \
     "v17") \
         export ONLINE_ADVISOR_URL=https://github.com/knizhnik/online_advisor/archive/refs/tags/1.0.tar.gz \
@@ -748,7 +751,8 @@ RUN case "${PG_VERSION:?}" in \
     esac && \
 	wget ${ONLINE_ADVISOR_URL} -O online_advisor.tar.gz && \
     echo "${ONLINE_ADVISOR_CHECKSUM} online_advisor.tar.gz" | sha256sum --check && \
-    mkdir online_advisor-src && cd online_advisor-src && tar xzf ../online_advisor.tar.gz --strip-components=1 -C .
+    mkdir online_advisor-src && cd online_advisor-src && tar xzf ../online_advisor.tar.gz --strip-components=1 -C . && \
+    if [ "${PG_VERSION:?}" = "v19" ]; then patch -p1 < /ext-src/online_advisor_v19.patch; fi
 
 FROM pg-build AS online_advisor-build
 COPY --from=online_advisor-src /ext-src/ /ext-src/

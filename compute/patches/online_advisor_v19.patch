@@ -1,0 +1,58 @@
+--- a/online_advisor.c
++++ b/online_advisor.c
+@@ -635,7 +635,7 @@
+ 			}
+ 			filter_clauses[i].agg = aggregate(filter_clauses[i].agg, value);
+ 			filter_clauses[i].n_calls += 1;
+-			filter_clauses[i].elapsed += INSTR_TIME_GET(queryDesc->totaltime->total);
++			filter_clauses[i].elapsed += INSTR_TIME_GET(queryDesc->query_instr->total);
+ 		}
+ 	}
+ }
+@@ -799,18 +799,16 @@
+ 		compile_time = (double)(GetCurrentTimestamp() - GetCurrentStatementStartTimestamp()) / USECS_PER_SEC;
+ 	}
+ 
++	if (do_analyze)
++		queryDesc->query_instr_options |= INSTRUMENT_TIMER;
++
+ 	if (prev_ExecutorStart)
+ 		prev_ExecutorStart(queryDesc, eflags);
+ 	else
+ 		standard_ExecutorStart(queryDesc, eflags);
+ 
+ 	if (do_analyze)
+-	{
+-		MemoryContext oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
+-		queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER, false);
+-		MemoryContextSwitchTo(oldcxt);
+ 		executor_stats_called = false;
+-	}
+ }
+ 
+ /*
+@@ -819,7 +817,7 @@
+ static void
+ advisor_ExecutorEnd(QueryDesc *queryDesc)
+ {
+-	if (do_analyze && queryDesc->totaltime)
++	if (do_analyze && queryDesc->query_instr)
+ 	{
+ 		MemoryContext oldcxt;
+ 
+@@ -833,14 +831,13 @@
+ 		 * Make sure stats accumulation is done.  (Note: it's okay if several
+ 		 * levels of hook all do this.)
+ 		 */
+-		InstrEndLoop(queryDesc->totaltime);
+ 
+ 		/*
+ 		 * Update information about clauses under spinlock
+ 		 */
+ 		if (!executor_stats_called) /* avoid self-inspection */
+ 		{
+-			double execute_time = INSTR_TIME_GET(queryDesc->totaltime->total);
++			double execute_time = INSTR_TIME_GET(queryDesc->query_instr->total);
+ 			double planning_overhead = compile_time / execute_time;
+ 
+ 			SpinLockAcquire(&state->spinlock);
