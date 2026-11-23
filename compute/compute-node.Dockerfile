@@ -2094,7 +2094,8 @@ ARG PG_VERSION
 COPY --from=pg_duckdb-src /ext-src/ /ext-src/
 WORKDIR /ext-src/pg_duckdb-src
 # v18 links duckdb 1.4.3 statically so it cannot collide with pg_mooncake's libduckdb.so (1.1.3).
-RUN if [ "${PG_VERSION:?}" = "v18" ] || [ "${PG_VERSION:?}" = "v19" ]; then export DUCKDB_BUILD=ReleaseStatic; fi && \
+# v19 has no pg_mooncake, so nothing to collide with; pg_duckdb 1.2.2's ReleaseStatic also needs vcpkg.
+RUN if [ "${PG_VERSION:?}" = "v18" ]; then export DUCKDB_BUILD=ReleaseStatic; fi && \
     make install -j $(getconf _NPROCESSORS_ONLN) && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/pg_duckdb.control
 

@@ -33,6 +33,11 @@ HEAVY = ["postgis-build", "pgrouting-build", "rdkit-build", "plv8-build", "pg_du
 V19_SKIPPED = {"pg_mooncake-build", "pgrag-build", "pg_jsonschema-build", "pg_graphql-build",
                "pg_tiktoken-build", "pgx_ulid-build", "pgx_ulid-pgrx12-build",
                "pg_session_jwt-build", "pg-anon-pg-build"}
+# Stage images that can no longer be rebuilt from source, pinned to the last good build.
+# ponytail: pgrag downloads onnxruntime from github.com/microsoft/onnxruntime, which has
+# returned 404 since 2026-11-17. Its v18 image (built against 18.7 headers; minor releases
+# keep the ABI) is reused until that source is back or pgrag is dropped from v18 too.
+FROZEN = {("18", "pgrag-build"): "709bebeba5f10bff"}
 COMPUTE_DOCKERFILE = "compute/compute-node.Dockerfile"
 # Both Dockerfiles copy the whole context for their Rust builds (compute_ctl, the Neon
 # extensions, the storage binaries), and none of those read these paths.
@@ -99,6 +104,7 @@ def main():
         for t in BASES + heavy(pg) + ["", "extension-tests"]:
             hashes[pg, t] = input_hash(COMPUTE_DOCKERFILE, t, args, [f"vendor/postgres-v{pg}"],
                                        ignore=CONTEXT_IGNORE)
+        hashes.update({k: v for k, v in FROZEN.items() if k[0] == pg})
         for arch in ARCHES:
             for t in BASES + heavy(pg):
                 refs[pg, t, arch] = f"{reg}/stage:v{pg}-{t}-{hashes[pg, t]}-{arch}"
