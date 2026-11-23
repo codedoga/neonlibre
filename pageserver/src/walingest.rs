@@ -1288,6 +1288,11 @@ impl WalIngest {
                     cp.wal_level = rec.wal_level;
                     self.checkpoint_modified = true;
                 }
+                CheckPoint::V19(cp) => {
+                    let rec = v17::XlParameterChange::decode(&mut buf);
+                    cp.wal_level = rec.wal_level;
+                    self.checkpoint_modified = true;
+                }
                 _ => {}
             }
         } else if info == pg_constants::XLOG_END_OF_RECOVERY {
@@ -1298,6 +1303,11 @@ impl WalIngest {
                     self.checkpoint_modified = true;
                 }
                 CheckPoint::V18(cp) => {
+                    let rec = v17::XlEndOfRecovery::decode(&mut buf);
+                    cp.wal_level = rec.wal_level;
+                    self.checkpoint_modified = true;
+                }
+                CheckPoint::V19(cp) => {
                     let rec = v17::XlEndOfRecovery::decode(&mut buf);
                     cp.wal_level = rec.wal_level;
                     self.checkpoint_modified = true;
@@ -1584,7 +1594,7 @@ impl WalIngest {
                         pg_version: PgMajorVersion,
                     ) -> Option<&Lazy<Mutex<RateLimit>>> {
                         const MIN_PG_VERSION: u32 = PgMajorVersion::PG14.major_version_num();
-                        const MAX_PG_VERSION: u32 = PgMajorVersion::PG18.major_version_num();
+                        const MAX_PG_VERSION: u32 = PgMajorVersion::PG19.major_version_num();
                         let pg_version = pg_version.major_version_num();
 
                         if pg_version < MIN_PG_VERSION || pg_version > MAX_PG_VERSION {

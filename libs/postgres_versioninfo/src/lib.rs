@@ -13,6 +13,7 @@ pub enum PgMajorVersion {
     PG16 = 16,
     PG17 = 17,
     PG18 = 18,
+    PG19 = 19,
     // !!! When you add a new PgMajorVersion, don't forget to update PgMajorVersion::ALL
 }
 
@@ -27,7 +28,7 @@ impl PgVersionId {
     pub fn from_full_pg_version(version: u32) -> PgVersionId {
         match version {
             0 => PgVersionId(version), // unknown version
-            140000..190000 => PgVersionId(version),
+            140000..200000 => PgVersionId(version),
             _ => panic!("Invalid full PostgreSQL version ID {version}"),
         }
     }
@@ -73,6 +74,7 @@ impl PgMajorVersion {
             PgMajorVersion::PG16 => 16,
             PgMajorVersion::PG17 => 17,
             PgMajorVersion::PG18 => 18,
+            PgMajorVersion::PG19 => 19,
         }
     }
 
@@ -87,6 +89,7 @@ impl PgMajorVersion {
             PgMajorVersion::PG16 => "16\x0A",
             PgMajorVersion::PG17 => "17\x0A",
             PgMajorVersion::PG18 => "18\x0A",
+            PgMajorVersion::PG19 => "19\x0A",
         }
     }
 
@@ -101,6 +104,7 @@ impl PgMajorVersion {
             PgMajorVersion::PG16 => "v16",
             PgMajorVersion::PG17 => "v17",
             PgMajorVersion::PG18 => "v18",
+            PgMajorVersion::PG19 => "v19",
         }
         .to_string()
     }
@@ -112,6 +116,7 @@ impl PgMajorVersion {
         PgMajorVersion::PG16,
         PgMajorVersion::PG17,
         PgMajorVersion::PG18,
+        PgMajorVersion::PG19,
     ];
 }
 
@@ -123,6 +128,7 @@ impl Display for PgMajorVersion {
             PgMajorVersion::PG16 => "PgMajorVersion::PG16",
             PgMajorVersion::PG17 => "PgMajorVersion::PG17",
             PgMajorVersion::PG18 => "PgMajorVersion::PG18",
+            PgMajorVersion::PG19 => "PgMajorVersion::PG19",
         })
     }
 }
@@ -147,6 +153,7 @@ impl TryFrom<PgVersionId> for PgMajorVersion {
             16 => PgMajorVersion::PG16,
             17 => PgMajorVersion::PG17,
             18 => PgMajorVersion::PG18,
+            19 => PgMajorVersion::PG19,
             _ => return Err(InvalidPgVersion(value.0)),
         })
     }
@@ -177,6 +184,7 @@ impl FromStr for PgMajorVersion {
             "16" => PgMajorVersion::PG16,
             "17" => PgMajorVersion::PG17,
             "18" => PgMajorVersion::PG18,
+            "19" => PgMajorVersion::PG19,
             _ => return Err(PgMajorVersionParseError(s.to_string())),
         })
     }

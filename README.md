@@ -23,7 +23,7 @@ serverless Postgres with separated storage and compute, built for **PostgreSQL
     Boost runtime for rdkit on v18;
   - PostgreSQL 18 builds of rum, plv8, pg_duckdb, pg_mooncake, pgrag and
     online_advisor, so it ships the same extension set as Neon's v17 image;
-  - a storage image that ships only PostgreSQL 18;
+  - a storage image that ships PostgreSQL 18 and 19;
   - smaller images: binaries and libraries are stripped of debug info (symbols stay,
     so backtraces still name functions), and the storage image drops the aws CLI, the
     deprecated `postgres_install.tar.gz` and the compute-only Neon extensions;
@@ -32,6 +32,23 @@ serverless Postgres with separated storage and compute, built for **PostgreSQL
     outbound HTTPS to `huggingface.co` for them, and both need `shared_preload_libraries`;
   - CI that builds, tests and publishes everything on GitHub-hosted runners
     ([.github/workflows](.github/workflows)).
+
+### PostgreSQL 19
+
+`compute-v19` is available (PostgreSQL from `REL_19_STABLE_neon` of `codedoga/postgres`,
+`vendor/postgres-v19`). It is a first, smaller extension set than v18:
+
+- **pg_mooncake**: not in v19. Its 0.1 line is dead upstream, and v18 only has it through a local port.
+- **pgrag**: not in v19. The upstream repository is archived.
+- **pgx_ulid**: not in v19. Upstream has no PostgreSQL 19 support.
+- **Deferred to v19.1:** pg_jsonschema, pg_graphql, pg_tiktoken, pg_session_jwt and anon. They are
+  pgrx extensions and need one pgrx 0.19.5 or later (the first with PostgreSQL 19) instead of the
+  three versions the Dockerfile pins now. Without pg_session_jwt, `local_proxy` has nothing to
+  validate JWTs against on v19 computes.
+- **Not yet smoke-tested on v19:** pgrouting, rdkit, pg_uuidv7, pg_partman, pg_hashids,
+  postgresql-unit, h3-pg, pgvector, timescaledb (a pre-release snapshot), pg_duckdb 1.2.2 and the
+  extensions pinned to a commit instead of a release (rum, plv8, pg_repack, pgtap).
+  Details are in the comments of [compute/compute-node.Dockerfile](compute/compute-node.Dockerfile).
 
 Older PostgreSQL versions (14–17) are not built or shipped. Their headers are
 still installed at build time, because Neon's Rust code generates bindings for
@@ -44,6 +61,7 @@ All images are multi-arch (`linux/amd64`, `linux/arm64`).
 | Image | Tags |
 |---|---|
 | `ghcr.io/codedoga/neonlibre/compute-v18` | `18.6.42`, `18.6`, `18`, `latest` |
+| `ghcr.io/codedoga/neonlibre/compute-v19` | `19.0.1`, `19.0`, `19`, `latest` |
 | `ghcr.io/codedoga/neonlibre/storage` | `42`, `latest` |
 
 The numbers above are examples. The scheme is:
@@ -52,7 +70,7 @@ The numbers above are examples. The scheme is:
   published builds of that image. A new number is published only when the image
   actually changed, and a tag is never reused.
 - **storage:** `<n>`, counted the same way. It has no PostgreSQL version of its
-  own; it contains PostgreSQL 18 for WAL redo and initdb.
+  own; it contains PostgreSQL 18 and 19 for WAL redo and initdb.
 - Every image is also tagged with the hash of its inputs (`<hash>`), once it has
   passed the tests. That is how CI knows what it does not need to build again.
 
@@ -83,7 +101,7 @@ images. [docker-compose/](docker-compose) shows how they fit together.
 
 | Workflow | When | What |
 |---|---|---|
-| [update-postgres](.github/workflows/update-postgres.yml) | weekly | Merges the newest `REL_18_*` release tag into the Neon branch of `codedoga/postgres` and opens a pull request bumping the submodule. It runs `build` on that branch and auto-merges once `ci-ok` passes. On a merge conflict it opens an issue instead. |
+| [update-postgres](.github/workflows/update-postgres.yml) | weekly | Merges the newest `REL_18_*` and `REL_19_*` release tags into `REL_18_STABLE_neon` and `REL_19_STABLE_neon` of `codedoga/postgres` and opens a pull request bumping the submodule. It runs `build` on that branch and auto-merges once `ci-ok` passes. On a merge conflict it opens an issue instead. |
 | [build](.github/workflows/build.yml) | on every push to `main`, and on pull requests | Builds and tests only what the change affects (below). Pushes to `main` publish the images that changed; pull requests do not. |
 | [tests](.github/workflows/pg-tests.yml) | manual | Neon's full Python regression suite, sharded. It takes hours. |
 

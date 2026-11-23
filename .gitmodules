@@ -26,3 +26,8 @@
 	path = vendor/postgres-v18
 	url = https://github.com/codedoga/postgres.git
 	branch = REL_18_STABLE_neon
+# v19 is built from codedoga/postgres as well (REL_19_STABLE_neon).
+[submodule "vendor/postgres-v19"]
+	path = vendor/postgres-v19
+	url = https://github.com/codedoga/postgres.git
+	branch = REL_19_STABLE_neon

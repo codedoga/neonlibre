@@ -63,6 +63,7 @@ macro_rules! for_all_postgres_versions {
         $macro!(v16);
         $macro!(v17);
         $macro!(v18);
+        $macro!(v19);
     };
 }
 
@@ -99,6 +100,7 @@ macro_rules! dispatch_pgversion {
                 $crate::PgMajorVersion::PG16 => v16,
                 $crate::PgMajorVersion::PG17 => v17,
                 $crate::PgMajorVersion::PG18 => v18,
+                $crate::PgMajorVersion::PG19 => v19,
             ]
         )
     };
@@ -132,6 +134,7 @@ macro_rules! enum_pgversion_dispatch {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         )
     };
@@ -163,6 +166,7 @@ macro_rules! enum_pgversion {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         }
     };
@@ -177,6 +181,7 @@ macro_rules! enum_pgversion {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         }
     };
@@ -289,7 +294,8 @@ const PG_CONTROL_VERSION_OFFSET: usize =
 /// the v14 layout fails with a bogus CRC mismatch.
 ///
 /// The returned struct uses the v14 layout. Every field up to and including
-/// `data_checksum_version` is laid out identically in v14..v18, and `crc` is
+/// `data_checksum_version` is laid out identically in v14..v18 (NOT v19, which added
+/// `slru_pages_per_segment` and `data_checksum_version_init` before it: NEEDS REVIEW), and `crc` is
 /// filled in from the correct offset, so the only field that is not meaningful
 /// for a v18 file is `mock_authentication_nonce`, which Neon never reads.
 pub fn decode_control_file(buf: &[u8]) -> anyhow::Result<ControlFileData> {
@@ -310,6 +316,7 @@ pub fn decode_control_file(buf: &[u8]) -> anyhow::Result<ControlFileData> {
         1300 => v16::bindings::ControlFileData::pg_control_crc_offset(),
         1700 => v17::bindings::ControlFileData::pg_control_crc_offset(),
         1800 => v18::bindings::ControlFileData::pg_control_crc_offset(),
+        1905 => v19::bindings::ControlFileData::pg_control_crc_offset(),
         other => anyhow::bail!("unrecognized pg_control_version {other}"),
     };
 
@@ -492,7 +499,11 @@ mod decode_control_file_tests {
             pg_control_version: 1800,
             ..Default::default()
         };
-        for buf in [v16.encode(), v17.encode(), v18.encode()] {
+        let v19 = v19::bindings::ControlFileData {
+            pg_control_version: 1905,
+            ..Default::default()
+        };
+        for buf in [v16.encode(), v17.encode(), v18.encode(), v19.encode()] {
             decode_control_file(&buf).unwrap();
         }
     }

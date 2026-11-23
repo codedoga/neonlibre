@@ -1,7 +1,8 @@
 name: update-postgres
 
-# Weekly: merge the newest PostgreSQL 18 minor release into the Neon branch of
-# <owner>/postgres, point vendor/postgres-v18 at the result on a branch, open a
+# Weekly: merge the newest PostgreSQL 18 and 19 minor releases into the Neon branches
+# (REL_18_STABLE_neon, REL_19_STABLE_neon) of <owner>/postgres, point vendor/postgres-v18 and
+# vendor/postgres-v19 at the result on a branch, open a
 # pull request, run `build` on that branch (it builds, tests and publishes only what
 # changed) and the minor-update subset of the Python suite (`tests`, suite=minor). When
 # that subset passes it publishes the images and enables auto-merge, so main takes the
@@ -18,7 +19,7 @@ on:
       majors:
         description: PostgreSQL major versions to update
         type: string
-        default: "18"
+        default: "18 19"
 
 permissions:
   actions: write
@@ -59,12 +60,14 @@ jobs:
           changed=() versions=()
           git clone --quiet --no-checkout "git@github.com:$POSTGRES_REPO.git" pg
           git -C pg remote add upstream https://github.com/postgres/postgres.git
-          refspecs=(); for m in ${MAJORS:-18}; do refspecs+=("refs/tags/REL_${m}_*:refs/tags/REL_${m}_*"); done
+          refspecs=(); for m in ${MAJORS:-18 19}; do refspecs+=("refs/tags/REL_${m}_*:refs/tags/REL_${m}_*"); done
           git -C pg fetch --quiet upstream "${refspecs[@]}"
-          for major in ${MAJORS:-18}; do
+          for major in ${MAJORS:-18 19}; do
             branch="REL_${major}_STABLE_neon"
             git -C pg checkout --quiet -B "$branch" "origin/$branch"
             latest=$(git -C pg tag -l "REL_${major}_*" | grep -E "^REL_${major}_[0-9]+$" | sort -t_ -k3 -n | tail -1)
+            # A major has no REL_<major>_<minor> tag until its first release (only BETA/RC tags).
+            [[ -n "$latest" ]] || { echo "PostgreSQL $major has no release tag yet, skipped" >> "$GITHUB_STEP_SUMMARY"; continue; }
             if ! git -C pg merge-base --is-ancestor "$latest" HEAD; then
               if ! git -C pg merge --no-edit -m "Merge $latest into $branch" "$latest"; then
                 conflicts=$(git -C pg diff --name-only --diff-filter=U)
@@ -97,7 +100,7 @@ jobs:
             echo "PostgreSQL ${versions[*]}" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "PostgreSQL ${MAJORS:-18} is up to date" >> "$GITHUB_STEP_SUMMARY"
+            echo "PostgreSQL ${MAJORS:-18 19} is up to date" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Open or update the pull request
         id: pr

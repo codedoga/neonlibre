@@ -1,0 +1,19 @@
+diff --git a/sql/pg_duckdb--1.0.0--1.1.0.sql b/sql/pg_duckdb--1.0.0--1.1.0.sql
+index 5df36ac..039645a 100644
+--- a/sql/pg_duckdb--1.0.0--1.1.0.sql
++++ b/sql/pg_duckdb--1.0.0--1.1.0.sql
+@@ -103,3 +103,14 @@ CREATE FUNCTION duckdb.create_simple_secret(
+ RETURNS TEXT
+ SET search_path = pg_catalog, pg_temp
+ LANGUAGE C AS 'MODULE_PATHNAME', 'pgduckdb_create_simple_secret';
++
++DO $$
++DECLARE
++  privileged_role_name text;
++BEGIN
++  privileged_role_name := current_setting('neon.privileged_role_name');
++
++  EXECUTE format('GRANT ALL ON FUNCTION duckdb.install_extension(TEXT, TEXT) TO %I', privileged_role_name);
++  EXECUTE format('GRANT ALL ON TABLE duckdb.extensions TO %I', privileged_role_name);
++  EXECUTE format('GRANT ALL ON SEQUENCE duckdb.extensions_table_seq TO %I', privileged_role_name);
++END $$;

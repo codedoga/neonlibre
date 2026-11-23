@@ -212,6 +212,7 @@ impl DecodedWALRecord {
                 PgMajorVersion::PG16 => info == crate::v16::bindings::XLOG_DBASE_CREATE_FILE_COPY,
                 PgMajorVersion::PG17 => info == crate::v17::bindings::XLOG_DBASE_CREATE_FILE_COPY,
                 PgMajorVersion::PG18 => info == crate::v18::bindings::XLOG_DBASE_CREATE_FILE_COPY,
+                PgMajorVersion::PG19 => info == crate::v19::bindings::XLOG_DBASE_CREATE_FILE_COPY,
             }
         } else {
             false
@@ -887,6 +888,17 @@ pub mod v17 {
             }
         }
     }
+}
+
+pub mod v19 {
+    //! NEEDS REVIEW: decoders are inherited from v17, which is only verified for
+    //! xl_parameter_change / xl_end_of_recovery (unchanged in PG19 headers). PG19 DID
+    //! change xl_multixact_truncate, MultiXactOffset (now uint64, so xl_multixact_create)
+    //! and xl_heap_prune; see pg19 notes in the final report.
+    pub use super::v17::{
+        XlEndOfRecovery, XlHeapDelete, XlHeapInsert, XlHeapLock, XlHeapLockUpdated,
+        XlHeapMultiInsert, XlHeapUpdate, XlParameterChange, rm_neon,
+    };
 }
 
 pub mod v18 {

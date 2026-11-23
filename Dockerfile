@@ -60,16 +60,18 @@ COPY --chown=nonroot vendor/postgres-v15 vendor/postgres-v15
 COPY --chown=nonroot vendor/postgres-v16 vendor/postgres-v16
 COPY --chown=nonroot vendor/postgres-v17 vendor/postgres-v17
 COPY --chown=nonroot vendor/postgres-v18 vendor/postgres-v18
+COPY --chown=nonroot vendor/postgres-v19 vendor/postgres-v19
 COPY --chown=nonroot Makefile Makefile
 COPY --chown=nonroot postgres.mk postgres.mk
 COPY --chown=nonroot scripts/ninstall.sh scripts/ninstall.sh
 
 ENV BUILD_TYPE=release
-# Only v18 is built and shipped. postgres_ffi's bindgen still needs the headers of
-# every version it knows, which postgres-headers-install provides cheaply.
+# Only v18 and v19 are built and shipped (the pageserver's walredo and initdb need the
+# server of every version it serves tenants for). postgres_ffi's bindgen still needs the
+# headers of every version it knows, which postgres-headers-install provides cheaply.
 RUN set -e \
     && mold -run make -j $(nproc) -s postgres-headers-install \
-    && mold -run make -j $(nproc) -s postgres-v18
+    && mold -run make -j $(nproc) -s postgres-v18 postgres-v19
 
 # 2. Prepare cargo-chef recipe
 FROM $REPOSITORY/$IMAGE:$TAG AS plan
@@ -136,7 +138,7 @@ RUN  --mount=type=secret,uid=1000,id=SUBZERO_ACCESS_TOKEN \
       --bin neon_local \
       --bin storage_scrubber \
       --locked --release \
-    && mold -run make -j $(nproc) -s neon-pg-ext-v18
+    && mold -run make -j $(nproc) -s neon-pg-ext-v18 neon-pg-ext-v19
 
 # The release profile keeps full debug info (see Cargo.toml), which is most of each
 # binary: pageserver is 407MB with it and 74MB without. Symbols stay, so backtraces still
@@ -147,10 +149,12 @@ RUN set -e \
         target/release/pagectl target/release/safekeeper target/release/storage_broker \
         target/release/storage_controller target/release/proxy target/release/endpoint_storage \
         target/release/neon_local target/release/storage_scrubber \
-    && rm -f pg_install/v18/lib/postgresql/neon.so pg_install/v18/lib/postgresql/neon_utils.so \
-        pg_install/v18/lib/postgresql/neon_test_utils.so pg_install/v18/lib/*.a \
-    && find pg_install/v18/bin pg_install/v18/lib -type f \( -perm -u+x -o -name '*.so*' \) \
-        -exec sh -c 'for f; do strip --strip-debug "$f" 2>/dev/null || true; done' _ {} +
+    && for v in v18 v19; do \
+        rm -f pg_install/$v/lib/postgresql/neon.so pg_install/$v/lib/postgresql/neon_utils.so \
+            pg_install/$v/lib/postgresql/neon_test_utils.so pg_install/$v/lib/*.a \
+        && find pg_install/$v/bin pg_install/$v/lib -type f \( -perm -u+x -o -name '*.so*' \) \
+            -exec sh -c 'for f; do strip --strip-debug "$f" 2>/dev/null || true; done' _ {} +; \
+    done
 
 # Assemble the final image
 FROM $BASE_IMAGE_SHA
@@ -184,6 +188,7 @@ COPY --from=build --chown=neon:neon /home/nonroot/target/release/endpoint_storag
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/neon_local          /usr/local/bin
 COPY --from=build --chown=neon:neon /home/nonroot/target/release/storage_scrubber    /usr/local/bin
 COPY --from=build /home/nonroot/pg_install/v18 /usr/local/v18/
+COPY --from=build /home/nonroot/pg_install/v19 /usr/local/v19/
 
 # By default, pageserver uses `.neon/` working directory in WORKDIR, so create one and fill it with the dummy config.
 # Now, when `docker run ... pageserver` is run, it can start without errors, yet will have some default dummy values.

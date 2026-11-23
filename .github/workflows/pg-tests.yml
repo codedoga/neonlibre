@@ -39,7 +39,7 @@ on:
         required: false
         default: v18
         type: choice
-        options: [ v14, v15, v16, v17, v18 ]
+        options: [ v14, v15, v16, v17, v18, v19 ]
       shards:
         description: Number of parallel test shards
         required: false

@@ -415,7 +415,7 @@ impl MetadataRecord {
             }
             // PostgreSQL 18 did not change the layout of any of the heapam WAL
             // records we look at here, so the v17 decoders apply unchanged.
-            PgMajorVersion::PG17 | PgMajorVersion::PG18 => {
+            PgMajorVersion::PG17 | PgMajorVersion::PG18 | PgMajorVersion::PG19 => {
                 if decoded.xl_rmid == pg_constants::RM_HEAP_ID {
                     let info = decoded.xl_info & pg_constants::XLOG_HEAP_OPMASK;
 
@@ -524,7 +524,10 @@ impl MetadataRecord {
         assert_eq!(decoded.xl_rmid, pg_constants::RM_NEON_ID);
 
         match pg_version {
-            PgMajorVersion::PG16 | PgMajorVersion::PG17 | PgMajorVersion::PG18 => {
+            PgMajorVersion::PG16
+            | PgMajorVersion::PG17
+            | PgMajorVersion::PG18
+            | PgMajorVersion::PG19 => {
                 let info = decoded.xl_info & pg_constants::XLOG_HEAP_OPMASK;
 
                 match info {
@@ -576,7 +579,7 @@ impl MetadataRecord {
                         // PG19 has no XLOG_HEAP2_VISIBLE and no VM block ref here: the VM
                         // bits are set implicitly. <=18 gets them from XLOG_HEAP2_VISIBLE.
                         if (xlrec.flags & pg_constants::XLH_INSERT_ALL_FROZEN_SET) != 0
-                            && pg_version.major_version_num() >= 19
+                            && pg_version == PgMajorVersion::PG19
                         {
                             set_vm_heap_blkno = Some(decoded.blocks[0].blkno);
                         }
@@ -748,7 +751,7 @@ impl MetadataRecord {
                 }
             }
             // The XLOG_DBASE_* info bits are unchanged in v18.
-            PgMajorVersion::PG17 | PgMajorVersion::PG18 => {
+            PgMajorVersion::PG17 | PgMajorVersion::PG18 | PgMajorVersion::PG19 => {
                 if info == postgres_ffi::v17::bindings::XLOG_DBASE_CREATE_WAL_LOG {
                     tracing::debug!("XLOG_DBASE_CREATE_WAL_LOG: noop");
                 } else if info == postgres_ffi::v17::bindings::XLOG_DBASE_CREATE_FILE_COPY {

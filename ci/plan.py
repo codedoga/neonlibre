@@ -18,7 +18,7 @@ from pathlib import Path
 
 from input_hash import input_hash, parse
 
-PG_VERSIONS = ["18"]
+PG_VERSIONS = ["18", "19"]
 ARCHES = ["amd64", "arm64"]
 # Shared bases, built in this order by one job; later ones build on earlier ones.
 BASES = ["pg-build", "pg-build-with-cargo", "rust-extensions-build",
@@ -28,6 +28,11 @@ HEAVY = ["postgis-build", "pgrouting-build", "rdkit-build", "plv8-build", "pg_du
          "pg_mooncake-build", "pgrag-build", "pg_jsonschema-build", "pg_graphql-build",
          "pg_tiktoken-build", "pgx_ulid-build", "pgx_ulid-pgrx12-build", "pg_session_jwt-build",
          "pg-anon-pg-build"]
+# No-ops on v19 (pg_mooncake, pgrag, pgx_ulid are dropped, the pgrx extensions deferred to
+# v19.1; see the top of the compute Dockerfile), so v19 has no stage image for them.
+V19_SKIPPED = {"pg_mooncake-build", "pgrag-build", "pg_jsonschema-build", "pg_graphql-build",
+               "pg_tiktoken-build", "pgx_ulid-build", "pgx_ulid-pgrx12-build",
+               "pg_session_jwt-build", "pg-anon-pg-build"}
 COMPUTE_DOCKERFILE = "compute/compute-node.Dockerfile"
 # Both Dockerfiles copy the whole context for their Rust builds (compute_ctl, the Neon
 # extensions, the storage binaries), and none of those read these paths.
@@ -69,6 +74,10 @@ def check_inherited_args(dockerfile):
         raise SystemExit("\n".join(problems))
 
 
+def heavy(pg):
+    return [t for t in HEAVY if pg != "19" or t not in V19_SKIPPED]
+
+
 def exists(ref):
     return subprocess.run(["docker", "buildx", "imagetools", "inspect", ref],
                           capture_output=True).returncode == 0
@@ -87,17 +96,17 @@ def main():
     hashes = {}
     for pg in PG_VERSIONS:
         args = {"PG_VERSION": f"v{pg}", "DEBIAN_VERSION": "trixie"}
-        for t in BASES + HEAVY + ["", "extension-tests"]:
+        for t in BASES + heavy(pg) + ["", "extension-tests"]:
             hashes[pg, t] = input_hash(COMPUTE_DOCKERFILE, t, args, [f"vendor/postgres-v{pg}"],
                                        ignore=CONTEXT_IGNORE)
         for arch in ARCHES:
-            for t in BASES + HEAVY:
+            for t in BASES + heavy(pg):
                 refs[pg, t, arch] = f"{reg}/stage:v{pg}-{t}-{hashes[pg, t]}-{arch}"
             refs[pg, "", arch] = f"{reg}/compute-v{pg}:{hashes[pg, '']}-{arch}"
             refs[pg, "extension-tests", arch] = f"{reg}/test-extensions-v{pg}:{hashes[pg, 'extension-tests']}-{arch}"
         refs[pg, "tested"] = f"{reg}/compute-v{pg}:{hashes[pg, '']}"
     storage = input_hash("Dockerfile", "", {"DEBIAN_VERSION": "trixie"},
-                         [f"vendor/postgres-v{v}" for v in ["14", "15", "16", "17", "18"]],
+                         [f"vendor/postgres-v{v}" for v in ["14", "15", "16", "17", "18", "19"]],
                          ignore=CONTEXT_IGNORE)
     for arch in ARCHES:
         refs["storage", arch] = f"{reg}/storage:{storage}-{arch}"
@@ -113,7 +122,7 @@ def main():
             if any(b["build"] for b in bases):
                 plan["base"].append({"pg": pg, "arch": arch, "targets": bases})
             base_ctx = " ".join(f"{t}={refs[pg, t, arch]}" for t in BASES)
-            for t in HEAVY:
+            for t in heavy(pg):
                 if not have[pg, t, arch]:
                     plan["stages"].append({"pg": pg, "arch": arch, "target": t,
                                            "ref": refs[pg, t, arch], "contexts": base_ctx})
@@ -123,7 +132,7 @@ def main():
                     "pg": pg, "arch": arch,
                     "final": "" if have[pg, "", arch] else final,
                     "tests": "" if have[pg, "extension-tests", arch] else tests,
-                    "contexts": base_ctx + " " + " ".join(f"{t}={refs[pg, t, arch]}" for t in HEAVY)})
+                    "contexts": base_ctx + " " + " ".join(f"{t}={refs[pg, t, arch]}" for t in heavy(pg))})
             # A new storage image serves both PostgreSQL versions, so it is tested with both.
             if retest or not have["storage", "tested"] or not have[pg, "tested"]:
                 plan["test"].append({"pg": pg, "arch": arch, "compute": final, "tests": tests,

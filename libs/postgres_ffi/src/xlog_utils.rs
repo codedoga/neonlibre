@@ -417,8 +417,15 @@ impl CheckPoint {
             modified = true;
         }
 
-        if multi_offset.wrapping_sub(self.nextMultiOffset) as i32 > 0 {
-            self.nextMultiOffset = multi_offset;
+        // PG19 widened MultiXactOffset to 64 bits and dropped wraparound (NEEDS REVIEW:
+        // callers still pass u32 decoded from the record).
+        let newer = if size_of_val(&self.nextMultiOffset) == 8 {
+            u64::from(multi_offset) > self.nextMultiOffset as u64
+        } else {
+            multi_offset.wrapping_sub(self.nextMultiOffset as u32) as i32 > 0
+        };
+        if newer {
+            self.nextMultiOffset = multi_offset as _;
             modified = true;
         }
 
