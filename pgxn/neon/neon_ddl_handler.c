@@ -44,6 +44,8 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/jsonb.h"
+#include "access/htup_details.h"
+#include "catalog/pg_type.h"
 #include <utils/lsyscache.h>
 #include <utils/syscache.h>
 
@@ -104,12 +106,19 @@ typedef struct DdlHashTable
 	HTAB	   *role_table;
 } DdlHashTable;
 
+/* PG19: pushJsonbValue() takes a JsonbInState and returns void; the result is state.result */
+#if PG_MAJORVERSION_NUM >= 19
+typedef JsonbInState NeonJsonbState;
+#else
+typedef JsonbParseState *NeonJsonbState;
+#endif
+
 static DdlHashTable RootTable;
 static DdlHashTable *CurrentDdlTable = &RootTable;
 static int SubtransLevel; /* current nesting level of subtransactions */
 
 static void
-PushKeyValue(JsonbParseState **state, char *key, char *value)
+PushKeyValue(NeonJsonbState *state, char *key, char *value)
 {
 	JsonbValue	k,
 				v;
@@ -127,7 +136,7 @@ PushKeyValue(JsonbParseState **state, char *key, char *value)
 static char *
 ConstructDeltaMessage()
 {
-	JsonbParseState *state = NULL;
+	NeonJsonbState state = {0};
 
 	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	if (RootTable.db_table)
@@ -208,8 +217,17 @@ ConstructDeltaMessage()
 		pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 	}
 	{
+#if PG_MAJORVERSION_NUM >= 19
+		JsonbValue *result;
+		Jsonb	   *jsonb;
+
+		pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+		result = state.result;
+		jsonb = JsonbValueToJsonb(result);
+#else
 		JsonbValue *result = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 		Jsonb	   *jsonb = JsonbValueToJsonb(result);
+#endif
 
 		return JsonbToCString(NULL, &jsonb->root, 0 /* estimated_len */ );
 	}
