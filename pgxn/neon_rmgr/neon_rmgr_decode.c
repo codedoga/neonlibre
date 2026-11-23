@@ -10,6 +10,10 @@
 
 #include "neon_rmgr.h"
 
+#if PG_MAJORVERSION_NUM >= 19
+#define RepOriginId ReplOriginId
+#endif
+
 #endif /* PG >= 16 */
 
 #if PG_MAJORVERSION_NUM == 16

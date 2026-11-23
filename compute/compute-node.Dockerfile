@@ -1234,6 +1234,8 @@ WORKDIR /ext-src/rdkit-src
 # however. By also adding /usr/local/pgsql, it works, which is weird because there
 # are no executables in that directory.
 ENV PATH="/usr/local/pgsql:$PATH"
+# PG19 headers use static_assert (C11); rdkit pins C99
+RUN if [ "${PG_VERSION}" = "v19" ]; then sed -i 's/set(CMAKE_C_STANDARD 99)/set(CMAKE_C_STANDARD 11)/' CMakeLists.txt; fi
 RUN cmake \
         -D RDK_BUILD_CAIRO_SUPPORT=OFF \
         -D RDK_BUILD_INCHI_SUPPORT=ON \
