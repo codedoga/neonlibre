@@ -172,6 +172,13 @@ impl MetadataRecord {
                         }
                     }
                 }
+                Some(MetadataRecord::Neonrmgr(NeonrmgrRecord::SetVmBits(ref set))) => {
+                    // Only the shard owning the VM page applies it.
+                    let vm_blk = pg_constants::HEAPBLK_TO_MAPBLOCK(set.heap_blkno);
+                    if shard.is_key_local(&rel_block_to_key(set.vm_rel, vm_blk)) {
+                        record.metadata_record = metadata_record.clone();
+                    }
+                }
                 Some(MetadataRecord::LogicalMessage(LogicalMessageRecord::Put(_))) => {
                     // Filter LogicalMessage records (AUX files) to only be stored on shard zero
                     if shard.is_shard_zero() {
@@ -512,6 +519,8 @@ impl MetadataRecord {
         let mut old_heap_blkno: Option<u32> = None;
         let mut flags = pg_constants::VISIBILITYMAP_VALID_BITS;
 
+        let mut set_vm_heap_blkno: Option<u32> = None;
+
         assert_eq!(decoded.xl_rmid, pg_constants::RM_NEON_ID);
 
         match pg_version {
@@ -564,6 +573,13 @@ impl MetadataRecord {
                         if (xlrec.flags & pg_constants::XLH_INSERT_ALL_VISIBLE_CLEARED) != 0 {
                             new_heap_blkno = Some(decoded.blocks[0].blkno);
                         }
+                        // PG19 has no XLOG_HEAP2_VISIBLE and no VM block ref here: the VM
+                        // bits are set implicitly. <=18 gets them from XLOG_HEAP2_VISIBLE.
+                        if (xlrec.flags & pg_constants::XLH_INSERT_ALL_FROZEN_SET) != 0
+                            && pg_version.major_version_num() >= 19
+                        {
+                            set_vm_heap_blkno = Some(decoded.blocks[0].blkno);
+                        }
                     }
                     pg_constants::XLOG_NEON_HEAP_LOCK => {
                         let xlrec = v17::rm_neon::XlNeonHeapLock::decode(buf);
@@ -595,6 +611,19 @@ impl MetadataRecord {
                     old_heap_blkno,
                     vm_rel,
                     flags,
+                },
+            ))))
+        } else if let Some(heap_blkno) = set_vm_heap_blkno {
+            Ok(Some(MetadataRecord::Neonrmgr(NeonrmgrRecord::SetVmBits(
+                SetVmBits {
+                    heap_blkno,
+                    vm_rel: RelTag {
+                        forknum: VISIBILITYMAP_FORKNUM,
+                        spcnode: decoded.blocks[0].rnode_spcnode,
+                        dbnode: decoded.blocks[0].rnode_dbnode,
+                        relnode: decoded.blocks[0].rnode_relnode,
+                    },
+                    flags: pg_constants::VISIBILITYMAP_VALID_BITS,
                 },
             ))))
         } else {

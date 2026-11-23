@@ -58,6 +58,9 @@ pub enum NeonWalRecord {
         next_moff: MultiXactOffset,
     },
 
+    /// Set bits in heap visibility map for one heap block ('flags' is bitmap of bits to set)
+    SetVisibilityMapFlags { heap_blkno: u32, flags: u8 },
+
     /// A testing record for unit testing purposes. It supports append data to an existing image, or clear it.
     #[cfg(feature = "testing")]
     Test {

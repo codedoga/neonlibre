@@ -146,6 +146,15 @@ pub struct ClearVmBits {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum NeonrmgrRecord {
     ClearVmBits(ClearVmBits),
+    /// PG19+: set VM bits implied by a multi-insert with XLH_INSERT_ALL_FROZEN_SET.
+    SetVmBits(SetVmBits),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SetVmBits {
+    pub heap_blkno: u32,
+    pub vm_rel: RelTag,
+    pub flags: u8,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

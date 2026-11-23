@@ -269,6 +269,20 @@ impl WalIngest {
                     self.ingest_clear_vm_bits(clear_vm_bits, modification, ctx)
                         .await?;
                 }
+                NeonrmgrRecord::SetVmBits(SetVmBits {
+                    heap_blkno,
+                    vm_rel,
+                    flags,
+                }) => {
+                    self.put_rel_wal_record(
+                        modification,
+                        vm_rel,
+                        pg_constants::HEAPBLK_TO_MAPBLOCK(heap_blkno),
+                        NeonWalRecord::SetVisibilityMapFlags { heap_blkno, flags },
+                        ctx,
+                    )
+                    .await?;
+                }
             },
             Some(MetadataRecord::Smgr(rec)) => match rec {
                 SmgrRecord::Create(create) => {

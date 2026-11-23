@@ -115,6 +115,21 @@ pub(crate) fn apply_in_neon(
                 }
             }
         }
+        NeonWalRecord::SetVisibilityMapFlags { heap_blkno, flags } => {
+            let (rel, blknum) = key.to_rel_block().context("invalid record")?;
+            assert!(
+                rel.forknum == VISIBILITYMAP_FORKNUM,
+                "SetVisibilityMapFlags record on unexpected rel {rel}"
+            );
+            assert!(pg_constants::HEAPBLK_TO_MAPBLOCK(*heap_blkno) == blknum);
+            let map_byte = pg_constants::HEAPBLK_TO_MAPBYTE(*heap_blkno);
+            let map_offset = pg_constants::HEAPBLK_TO_OFFSET(*heap_blkno);
+            let map = &mut page[pg_constants::MAXALIGN_SIZE_OF_PAGE_HEADER_DATA..];
+            map[map_byte as usize] |= flags << map_offset;
+            if !postgres_ffi::page_is_new(page) {
+                postgres_ffi::page_set_lsn(page, lsn);
+            }
+        }
         // Non-relational WAL records are handled here, with custom code that has the
         // same effects as the corresponding Postgres WAL redo function.
         NeonWalRecord::ClogSetCommitted { xids, timestamp } => {
