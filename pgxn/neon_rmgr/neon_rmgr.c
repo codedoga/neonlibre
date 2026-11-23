@@ -289,7 +289,7 @@ redo_neon_heap_insert(XLogReaderState *record)
 		htup->t_choice.t_heap.t_field3.t_cid = xlhdr.t_cid;
 		htup->t_ctid = target_tid;
 
-		if (PageAddItem(page, (Item) htup, newlen, xlrec->offnum,
+		if (PageAddItem(page, (void *) htup, newlen, xlrec->offnum,
 						true, true) == InvalidOffsetNumber)
 			elog(PANIC, "neon_rm_redo: failed to add tuple");
 
@@ -630,7 +630,7 @@ redo_neon_heap_update(XLogReaderState *record, bool hot_update)
 		/* Make sure there is no forward chain link in t_ctid */
 		htup->t_ctid = newtid;
 
-		offnum = PageAddItem(page, (Item) htup, newlen, offnum, true, true);
+		offnum = PageAddItem(page, (void *) htup, newlen, offnum, true, true);
 		if (offnum == InvalidOffsetNumber)
 			elog(PANIC, "neon_rm_redo: failed to add tuple");
 
@@ -846,7 +846,7 @@ redo_neon_heap_multi_insert(XLogReaderState *record)
 			ItemPointerSetBlockNumber(&htup->t_ctid, blkno);
 			ItemPointerSetOffsetNumber(&htup->t_ctid, offnum);
 
-			offnum = PageAddItem(page, (Item) htup, newlen, offnum, true, true);
+			offnum = PageAddItem(page, (void *) htup, newlen, offnum, true, true);
 			if (offnum == InvalidOffsetNumber)
 				elog(PANIC, "neon_rm_redo: failed to add tuple");
 		}

@@ -12,6 +12,7 @@
 #include "replication/slot.h"
 #include "storage/fd.h"
 #include "storage/latch.h"
+#include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
 #include "utils/guc.h"
@@ -290,7 +291,11 @@ LogicalSlotsMonitorMain(Datum main_arg)
 					pid_t		active_pid;
 
 					SpinLockAcquire(&s->mutex);
+#if PG_MAJORVERSION_NUM >= 19
+					active_pid = (s->active_proc == INVALID_PROC_NUMBER) ? 0 : GetPGProcByNumber(s->active_proc)->pid;
+#else
 					active_pid = s->active_pid;
+#endif
 					SpinLockRelease(&s->mutex);
 
 					if (active_pid == 0)
