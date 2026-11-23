@@ -549,7 +549,12 @@ CreateFakeSharedMemoryAndSemaphores(void)
 
 	/* Dummy implementation of PGSharedMemoryCreate() */
 	{
+#if PG_MAJORVERSION_NUM >= 19
+		/* v19 ShmemAlloc asserts cache-line alignment of the absolute address */
+		hdr = (PGShmemHeader *) aligned_alloc(4096, TYPEALIGN(4096, size));
+#else
 		hdr = (PGShmemHeader *) malloc(size);
+#endif
 		if (!hdr)
 			ereport(FATAL,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
