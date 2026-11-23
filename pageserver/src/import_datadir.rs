@@ -555,7 +555,7 @@ async fn import_file(
                 // Extract the checkpoint record and import it separately.
                 let pg_control = postgres_ffi::decode_control_file(&bytes[..])?;
                 ensure_no_data_checksums(&pg_control)?;
-                let checkpoint_bytes = pg_control.checkPointCopy.encode()?;
+                let checkpoint_bytes = postgres_ffi::control_file_checkpoint_bytes(&bytes[..])?;
                 modification.put_checkpoint(checkpoint_bytes)?;
                 debug!("imported control file");
 

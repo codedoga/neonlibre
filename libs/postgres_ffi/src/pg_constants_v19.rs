@@ -39,9 +39,10 @@ pub const XLOG_HEAP2_PRUNE_VACUUM_CLEANUP: u8 = 0x30;
 pub const XLOG_OVERWRITE_CONTRECORD: u8 = 0xD0;
 pub const XLOG_CHECKPOINT_REDO: u8 = 0xE0;
 
-// NEEDS REVIEW (PG19): XLOG_HEAP2_VISIBLE (0x40) is gone; the VM bits are set by
-// xl_heap_prune, whose flags field widened to uint16 (XLHP_VM_ALL_VISIBLE 1<<8,
-// XLHP_VM_ALL_FROZEN 1<<9). New xlog info bytes: XLOG_ASSIGN_LSN 0xC0,
+// PG19: XLOG_HEAP2_VISIBLE (0x40) is gone and the opcode is unused; the VM bits are set by
+// xl_heap_prune (flags widened to uint16, XLHP_VM_ALL_VISIBLE 1<<8, XLHP_VM_ALL_FROZEN 1<<9),
+// which registers the VM page as block 1, so the generic block-ref ingest + walredo covers it.
+// Checked against PG19 heapam_xlog.h / pruneheap.c log_heap_prune_and_freeze(). New xlog info bytes: XLOG_ASSIGN_LSN 0xC0,
 // XLOG_LOGICAL_DECODING_STATUS_CHANGE 0xF0. XLP_BKP_REMOVABLE no longer exists
 // (0x0004 is now XLP_FIRST_IS_OVERWRITE_CONTRECORD).
 pub const XLOG_ASSIGN_LSN: u8 = 0xC0;

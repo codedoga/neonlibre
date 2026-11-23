@@ -200,7 +200,8 @@ RUN cd postgres && \
     "v14" | "v15" | "v16") \
     patch -p1 < /pg_stat_statements_pg14-16.patch; \
     ;; \
-    # NEEDS REVIEW (v19): pg_stat_statements_pg17.patch was not checked against vendor/postgres-v19.
+    # v19: pg_stat_statements_pg17.patch applies cleanly to REL_19_STABLE_neon; 1.11--1.12 and
+    # 1.12--1.13 only recreate the view/function, not the reset() functions the grants target.
     "v17" | "v18" | "v19") \
     patch -p1 < /pg_stat_statements_pg17.patch; \
     ;; \
@@ -2175,8 +2176,8 @@ RUN case "${PG_VERSION}" in \
     echo "${PGAUDIT_CHECKSUM} pgaudit.tar.gz" | sha256sum --check && \
     mkdir pgaudit-src && cd pgaudit-src && tar xzf ../pgaudit.tar.gz --strip-components=1 -C . && \
     # pgaudit 18.0 carries the parallel-worker suppression upstream, so the patch
-    # is a no-op there (and would fail as already-applied). NEEDS REVIEW (v19): assumed the
-    # same for 19.0; pgaudit-parallel_workers-v19.patch only exists because of the COPY above.
+    # is a no-op there (and would fail as already-applied). Checked: pgaudit 19.0
+    # has the IsParallelWorker() checks too; pgaudit-parallel_workers-v19.patch only exists because of the COPY above.
     if [ "${PG_VERSION}" != "v18" ] && [ "${PG_VERSION}" != "v19" ]; then \
         patch -p1 < "/ext-src/pgaudit-parallel_workers-${PG_VERSION}.patch"; \
     fi

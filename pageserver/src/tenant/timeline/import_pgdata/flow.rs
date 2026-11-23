@@ -223,11 +223,9 @@ impl Planner {
                 self.control_file.control_file_buf().clone(),
             )));
 
-        let checkpoint_buf = self
-            .control_file
-            .control_file_data()
-            .checkPointCopy
-            .encode()?;
+        // In the control file's own CheckPoint layout (v19's differs from v14's).
+        let checkpoint_buf =
+            postgres_ffi::control_file_checkpoint_bytes(self.control_file.control_file_buf())?;
         self.tasks
             .push(AnyImportTask::SingleKey(ImportSingleKeyTask::new(
                 CHECKPOINT_KEY,
