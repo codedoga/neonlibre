@@ -158,7 +158,11 @@ LwLsnCacheShmemInit(void)
 		info.keysize = sizeof(BufferTag);
 		info.entrysize = sizeof(LastWrittenLsnCacheEntry);
 		lastWrittenLsnCache = ShmemInitHash("last_written_lsn_cache",
+#if PG_MAJORVERSION_NUM >= 19
+			lwlsn_cache_size,
+#else
 			lwlsn_cache_size, lwlsn_cache_size,
+#endif
 										&info,
 										HASH_ELEM | HASH_BLOBS);
 		LwLsnCache = ShmemInitStruct("neon/LwLsnCacheCtl", sizeof(LwLsnCacheCtl), &found);
@@ -261,7 +265,7 @@ neon_get_lwlsn_v(NRelFileInfo relfilenode, ForkNumber forknum,
 
 	Assert(LwLsnCache->lastWrittenLsnCacheSize != 0);
 	Assert(nblocks > 0);
-	Assert(PointerIsValid(lsns));
+	Assert((lsns != NULL));
 
 	LWLockAcquire(LastWrittenLsnLock, LW_SHARED);
 

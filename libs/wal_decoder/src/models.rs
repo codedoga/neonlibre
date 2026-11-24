@@ -146,6 +146,15 @@ pub struct ClearVmBits {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum NeonrmgrRecord {
     ClearVmBits(ClearVmBits),
+    /// PG19+: set VM bits implied by a multi-insert with XLH_INSERT_ALL_FROZEN_SET.
+    SetVmBits(SetVmBits),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SetVmBits {
+    pub heap_blkno: u32,
+    pub vm_rel: RelTag,
+    pub flags: u8,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -227,6 +236,10 @@ pub enum MultiXactRecord {
     ZeroPage(MultiXactZeroPage),
     Create(XlMultiXactCreate),
     Truncate(XlMultiXactTruncate),
+    // PG19 (64-bit MultiXactOffset). New variants go last: bincode encodes the variant
+    // index, so the encoding of the variants above stays unchanged.
+    CreateV19(postgres_ffi::walrecord::v19::XlMultiXactCreate),
+    TruncateV19(postgres_ffi::walrecord::v19::XlMultiXactTruncate),
 }
 
 #[derive(Clone, Serialize, Deserialize)]

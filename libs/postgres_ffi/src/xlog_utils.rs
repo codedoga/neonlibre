@@ -409,7 +409,8 @@ impl CheckPoint {
     /// MultiXactAdvanceNextMXact() logic in PostgreSQL's xlog_redo() function.
     ///
     /// Returns 'true' if the Checkpoint was updated.
-    pub fn update_next_multixid(&mut self, multi_xid: u32, multi_offset: u32) -> bool {
+    /// `multi_offset` is a 32-bit value for v14..v18 and a 64-bit one for v19.
+    pub fn update_next_multixid(&mut self, multi_xid: u32, multi_offset: u64) -> bool {
         let mut modified = false;
 
         if multi_xid.wrapping_sub(self.nextMulti) as i32 > 0 {
@@ -417,8 +418,15 @@ impl CheckPoint {
             modified = true;
         }
 
-        if multi_offset.wrapping_sub(self.nextMultiOffset) as i32 > 0 {
-            self.nextMultiOffset = multi_offset;
+        // PG19 widened MultiXactOffset to 64 bits and offsets never wrap around
+        // (MultiXactAdvanceNextMXact: plain `<`). Before, a wraparound-aware 32-bit compare.
+        let newer = if size_of_val(&self.nextMultiOffset) == 8 {
+            multi_offset > u64::from(self.nextMultiOffset)
+        } else {
+            (multi_offset as u32).wrapping_sub(u64::from(self.nextMultiOffset) as u32) as i32 > 0
+        };
+        if newer {
+            self.nextMultiOffset = multi_offset as _;
             modified = true;
         }
 

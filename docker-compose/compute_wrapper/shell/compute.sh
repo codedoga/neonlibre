@@ -77,14 +77,22 @@ else
   fi
 fi
 
-if [[ ${PG_VERSION} -ge 17 ]]; then
-  ulid_extension=pgx_ulid
+if [[ ${PG_VERSION} -ge 19 ]]; then
+  echo "pgx_ulid is not built for v19, not preloading it"   # see compute/compute-node.Dockerfile
 else
-  ulid_extension=ulid
+  if [[ ${PG_VERSION} -ge 17 ]]; then
+    ulid_extension=pgx_ulid
+  else
+    ulid_extension=ulid
+  fi
+  echo "Adding pgx_ulid"
+  shared_libraries=$(jq -r '.spec.cluster.settings[] | select(.name=="shared_preload_libraries").value' ${CONFIG_FILE})
+  sed -i "s|${shared_libraries}|${shared_libraries},${ulid_extension}|" ${CONFIG_FILE}
 fi
-echo "Adding pgx_ulid"
-shared_libraries=$(jq -r '.spec.cluster.settings[] | select(.name=="shared_preload_libraries").value' ${CONFIG_FILE})
-sed -i "s|${shared_libraries}|${shared_libraries},${ulid_extension}|" ${CONFIG_FILE}
+if [[ ${PG_VERSION} -ge 19 ]]; then
+  # PG19 warns on md5 auth, which breaks expected outputs of extension tests
+  jq '.spec.cluster.settings += [{"name":"md5_password_warnings","value":"off","vartype":"bool"}]' ${CONFIG_FILE} > ${CONFIG_FILE}.new && mv ${CONFIG_FILE}.new ${CONFIG_FILE}
+fi
 echo "Overwrite tenant id and timeline id in spec file"
 sed -i "s|TENANT_ID|${tenant_id}|" ${CONFIG_FILE}
 sed -i "s|TIMELINE_ID|${timeline_id}|" ${CONFIG_FILE}

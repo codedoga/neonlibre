@@ -186,13 +186,14 @@ impl StorageController {
     /// to other versions if that one isn't found.  Some automated tests create circumstances
     /// where only one version is available in pg_distrib_dir, such as `test_remote_extensions`.
     async fn get_pg_dir(&self, dir_name: &str) -> anyhow::Result<Utf8PathBuf> {
-        const PREFER_VERSIONS: [PgMajorVersion; 6] = [
+        const PREFER_VERSIONS: [PgMajorVersion; 7] = [
             STORAGE_CONTROLLER_POSTGRES_VERSION,
             PgMajorVersion::PG16,
             PgMajorVersion::PG15,
             PgMajorVersion::PG14,
             PgMajorVersion::PG17,
             PgMajorVersion::PG18,
+            PgMajorVersion::PG19,
         ];
 
         for v in PREFER_VERSIONS {

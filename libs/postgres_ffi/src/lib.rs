@@ -63,6 +63,7 @@ macro_rules! for_all_postgres_versions {
         $macro!(v16);
         $macro!(v17);
         $macro!(v18);
+        $macro!(v19);
     };
 }
 
@@ -99,6 +100,7 @@ macro_rules! dispatch_pgversion {
                 $crate::PgMajorVersion::PG16 => v16,
                 $crate::PgMajorVersion::PG17 => v17,
                 $crate::PgMajorVersion::PG18 => v18,
+                $crate::PgMajorVersion::PG19 => v19,
             ]
         )
     };
@@ -132,6 +134,7 @@ macro_rules! enum_pgversion_dispatch {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         )
     };
@@ -163,6 +166,7 @@ macro_rules! enum_pgversion {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         }
     };
@@ -177,6 +181,7 @@ macro_rules! enum_pgversion {
                 V16 : v16,
                 V17 : v17,
                 V18 : v18,
+                V19 : v19,
             ]
         }
     };
@@ -292,6 +297,10 @@ const PG_CONTROL_VERSION_OFFSET: usize =
 /// `data_checksum_version` is laid out identically in v14..v18, and `crc` is
 /// filled in from the correct offset, so the only field that is not meaningful
 /// for a v18 file is `mock_authentication_nonce`, which Neon never reads.
+///
+/// v19 moved things (see [`control_file_from_v19`]), so a v19 file is decoded with
+/// its own layout and copied over field by field. Its `checkPointCopy` does not fit
+/// the v14 CheckPoint; use [`control_file_checkpoint_bytes`] for the checkpoint.
 pub fn decode_control_file(buf: &[u8]) -> anyhow::Result<ControlFileData> {
     if buf.len() < PG_CONTROL_VERSION_OFFSET + size_of::<u32>() {
         anyhow::bail!("control file is too short");
@@ -310,10 +319,88 @@ pub fn decode_control_file(buf: &[u8]) -> anyhow::Result<ControlFileData> {
         1300 => v16::bindings::ControlFileData::pg_control_crc_offset(),
         1700 => v17::bindings::ControlFileData::pg_control_crc_offset(),
         1800 => v18::bindings::ControlFileData::pg_control_crc_offset(),
+        1905 => return control_file_from_v19(&v19::bindings::ControlFileData::decode(buf)?),
         other => anyhow::bail!("unrecognized pg_control_version {other}"),
     };
 
     ControlFileData::decode_with_crc_offset(buf, offsetof_crc)
+}
+
+/// The checkpoint copy of a control file, encoded in the CheckPoint layout of the
+/// file's own major version, which is what the pageserver stores under CHECKPOINT_KEY.
+pub fn control_file_checkpoint_bytes(buf: &[u8]) -> anyhow::Result<Bytes> {
+    let control = decode_control_file(buf)?;
+    Ok(if control.pg_control_version == 1905 {
+        v19::bindings::ControlFileData::decode(buf)?.checkPointCopy.encode()?
+    } else {
+        control.checkPointCopy.encode()?
+    })
+}
+
+/// PG19 changed the layout after `checkPointCopy.wal_level`: CheckPoint gained
+/// `logicalDecodingEnabled` (pushing nextXid from 24 to 32), `nextMultiOffset` is 64-bit,
+/// and ControlFileData gained `slru_pages_per_segment` and `data_checksum_version_init`.
+/// Copy by name into the v14 struct. A 64-bit nextMultiOffset that does not fit is an
+/// error rather than a silent truncation.
+fn control_file_from_v19(c: &v19::bindings::ControlFileData) -> anyhow::Result<ControlFileData> {
+    let cp = &c.checkPointCopy;
+    Ok(ControlFileData {
+        system_identifier: c.system_identifier,
+        pg_control_version: c.pg_control_version,
+        catalog_version_no: c.catalog_version_no,
+        state: c.state,
+        time: c.time,
+        checkPoint: c.checkPoint,
+        checkPointCopy: CheckPoint {
+            redo: cp.redo,
+            ThisTimeLineID: cp.ThisTimeLineID,
+            PrevTimeLineID: cp.PrevTimeLineID,
+            fullPageWrites: cp.fullPageWrites,
+            nextXid: v14::bindings::FullTransactionId { value: cp.nextXid.value },
+            nextOid: cp.nextOid,
+            nextMulti: cp.nextMulti,
+            nextMultiOffset: u32::try_from(cp.nextMultiOffset).map_err(|_| {
+                anyhow::anyhow!("v19 nextMultiOffset {} does not fit 32 bits", cp.nextMultiOffset)
+            })?,
+            oldestXid: cp.oldestXid,
+            oldestXidDB: cp.oldestXidDB,
+            oldestMulti: cp.oldestMulti,
+            oldestMultiDB: cp.oldestMultiDB,
+            time: cp.time,
+            oldestCommitTsXid: cp.oldestCommitTsXid,
+            newestCommitTsXid: cp.newestCommitTsXid,
+            oldestActiveXid: cp.oldestActiveXid,
+            ..Default::default()
+        },
+        unloggedLSN: c.unloggedLSN,
+        minRecoveryPoint: c.minRecoveryPoint,
+        minRecoveryPointTLI: c.minRecoveryPointTLI,
+        backupStartPoint: c.backupStartPoint,
+        backupEndPoint: c.backupEndPoint,
+        backupEndRequired: c.backupEndRequired,
+        wal_level: c.wal_level,
+        wal_log_hints: c.wal_log_hints,
+        MaxConnections: c.MaxConnections,
+        max_worker_processes: c.max_worker_processes,
+        max_wal_senders: c.max_wal_senders,
+        max_prepared_xacts: c.max_prepared_xacts,
+        max_locks_per_xact: c.max_locks_per_xact,
+        track_commit_timestamp: c.track_commit_timestamp,
+        maxAlign: c.maxAlign,
+        floatFormat: c.floatFormat,
+        blcksz: c.blcksz,
+        relseg_size: c.relseg_size,
+        xlog_blcksz: c.xlog_blcksz,
+        xlog_seg_size: c.xlog_seg_size,
+        nameDataLen: c.nameDataLen,
+        indexMaxKeys: c.indexMaxKeys,
+        toast_max_chunk_size: c.toast_max_chunk_size,
+        loblksize: c.loblksize,
+        float8ByVal: c.float8ByVal,
+        data_checksum_version: c.data_checksum_version,
+        crc: c.crc,
+        ..Default::default()
+    })
 }
 
 pub fn generate_pg_control(
@@ -492,8 +579,44 @@ mod decode_control_file_tests {
             pg_control_version: 1800,
             ..Default::default()
         };
-        for buf in [v16.encode(), v17.encode(), v18.encode()] {
+        let v19 = v19::bindings::ControlFileData {
+            pg_control_version: 1905,
+            ..Default::default()
+        };
+        for buf in [v16.encode(), v17.encode(), v18.encode(), v19.encode()] {
             decode_control_file(&buf).unwrap();
         }
+    }
+
+    #[test]
+    fn v19_fields_are_taken_by_name() {
+        // Values chosen so a v14-layout read of a v19 file would get them wrong.
+        let mut v19 = v19::bindings::ControlFileData {
+            pg_control_version: 1905,
+            slru_pages_per_segment: 32,
+            data_checksum_version_init: 7,
+            data_checksum_version: 0,
+            xlog_seg_size: 16 << 20,
+            ..Default::default()
+        };
+        v19.checkPointCopy.logicalDecodingEnabled = true;
+        v19.checkPointCopy.nextXid.value = 0x1234_5678_9abc;
+        v19.checkPointCopy.nextOid = 16384;
+        v19.checkPointCopy.nextMultiOffset = 42;
+        let buf = v19.encode();
+
+        let c = decode_control_file(&buf).unwrap();
+        assert_eq!(c.data_checksum_version, 0);
+        assert_eq!(c.xlog_seg_size, 16 << 20);
+        assert_eq!(c.checkPointCopy.nextXid.value, 0x1234_5678_9abc);
+        assert_eq!(c.checkPointCopy.nextOid, 16384);
+        assert_eq!(c.checkPointCopy.nextMultiOffset, 42);
+        assert_eq!(
+            control_file_checkpoint_bytes(&buf).unwrap(),
+            v19.checkPointCopy.encode().unwrap()
+        );
+
+        v19.checkPointCopy.nextMultiOffset = 1 << 40;
+        assert!(decode_control_file(&v19.encode()).is_err());
     }
 }

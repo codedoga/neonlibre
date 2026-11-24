@@ -1192,7 +1192,7 @@ Retry:
 		PrfHashEntry *entry = NULL;
 		neon_request_lsns *lsns;
 
-		if (PointerIsValid(mask) && BITMAP_ISSET(mask, i))
+		if ((mask != NULL) && BITMAP_ISSET(mask, i))
 			continue;
 
 		if (frlsns)
@@ -2100,7 +2100,7 @@ communicator_read_at_lsnv(NRelFileInfo rinfo, ForkNumber forkNum, BlockNumber ba
 	PrefetchRequest *slot;
 	PrefetchRequest hashkey;
 
-	Assert(PointerIsValid(request_lsns));
+	Assert((request_lsns != NULL));
 	Assert(nblocks >= 1);
 
 	/*
@@ -2137,7 +2137,7 @@ communicator_read_at_lsnv(NRelFileInfo rinfo, ForkNumber forkNum, BlockNumber ba
 		neon_request_lsns *reqlsns = &request_lsns[i];
 		TimestampTz		start_ts, end_ts;
 
-		if (PointerIsValid(mask) && BITMAP_ISSET(mask, i))
+		if ((mask != NULL) && BITMAP_ISSET(mask, i))
 			continue;
 
 		start_ts = GetCurrentTimestamp();

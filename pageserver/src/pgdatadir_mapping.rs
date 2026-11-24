@@ -2431,7 +2431,10 @@ impl DatadirModification<'_> {
                 if v2_mode.current_status == RelSizeMigration::Migrated {
                     return Err(e);
                 }
-                tracing::warn!("error writing rel_size_v2 keyspace: {}", e);
+                tracing::warn!(
+                    "error writing rel_size_v2 keyspace: {} (rel {}, dbdir_exists={}, status={:?})",
+                    e, rel, dbdir_exists, v2_mode.current_status
+                );
             }
         }
 

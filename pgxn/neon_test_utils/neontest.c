@@ -26,7 +26,11 @@
 #include "utils/builtins.h"
 #include "utils/pg_lsn.h"
 #include "utils/rel.h"
+#include "utils/timestamp.h"
 #include "utils/varlena.h"
+#if PG_MAJORVERSION_NUM >= 16
+#include "varatt.h"
+#endif
 #include "utils/wait_event.h"
 #include "../neon/pagestore_client.h"
 
@@ -62,7 +66,11 @@ void
 _PG_init(void)
 {
 	/* Asserts verify that typedefs above match original declarations */
+#if PG_VERSION_NUM >= 190000
+	StaticAssertVariableIsOfType(&neon_read_at_lsn, neon_read_at_lsn_type);
+#else
 	AssertVariableIsOfType(&neon_read_at_lsn, neon_read_at_lsn_type);
+#endif
 	neon_read_at_lsn_ptr = (neon_read_at_lsn_type)
 		load_external_function("$libdir/neon", "neon_read_at_lsn",
 							   true, NULL);
@@ -249,7 +257,11 @@ clear_buffer_cache(PG_FUNCTION_ARGS)
 		for (int i = 0; i < NBuffers; i++)
 		{
 			BufferDesc *bufHdr;
+#if PG_VERSION_NUM >= 190000
+			uint64		buf_state;
+#else
 			uint32		buf_state;
+#endif
 			Buffer		bufferid;
 			bool		isvalid;
 			NRelFileInfo rinfo;
@@ -269,7 +281,11 @@ clear_buffer_cache(PG_FUNCTION_ARGS)
 			forknum = bufHdr->tag.forkNum;
 			blocknum = bufHdr->tag.blockNum;
 
+#if PG_VERSION_NUM >= 190000
+			UnlockBufHdr(bufHdr);
+#else
 			UnlockBufHdr(bufHdr, buf_state);
+#endif
 
 			/*
 			 * Pin the buffer, and release it again. Because we have

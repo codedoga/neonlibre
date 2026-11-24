@@ -101,6 +101,7 @@
 #if PG_MAJORVERSION_NUM >= 18
 #include "storage/aio_subsys.h"
 #endif
+#include "storage/fd.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 #include "storage/dsm.h"
@@ -108,6 +109,9 @@
 #include "storage/dsm_registry.h"
 #endif
 #include "storage/ipc.h"
+#if PG_MAJORVERSION_NUM >= 19
+#include "storage/shmem_internal.h"
+#endif
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/predicate.h"
@@ -327,8 +331,15 @@ WalRedoMain(int argc, char *argv[])
 	InitializeFastPathLocks();
 #endif
 
+#if PG_MAJORVERSION_NUM >= 19
+	/* v19: shmem is requested via ShmemCallbacks registered by each subsystem */
+	RegisterBuiltinShmemCallbacks();
+#endif
 #if PG_VERSION_NUM >= 150000
 	process_shmem_requests();
+#if PG_MAJORVERSION_NUM >= 19
+	ShmemCallRequestCallbacks();
+#endif
 	InitializeShmemGUCs();
 
 	/*
@@ -523,7 +534,10 @@ CreateFakeSharedMemoryAndSemaphores(void)
 	int			numSemas;
 	char		cwd[MAXPGPATH];
 
-#if PG_VERSION_NUM >= 150000
+#if PG_MAJORVERSION_NUM >= 19
+	size = CalculateShmemSize();
+	numSemas = ProcGlobalSemas();
+#elif PG_VERSION_NUM >= 150000
 	size = CalculateShmemSize(&numSemas);
 #else
 	/*
@@ -536,7 +550,12 @@ CreateFakeSharedMemoryAndSemaphores(void)
 
 	/* Dummy implementation of PGSharedMemoryCreate() */
 	{
+#if PG_MAJORVERSION_NUM >= 19
+		/* v19 ShmemAlloc asserts cache-line alignment of the absolute address */
+		hdr = (PGShmemHeader *) aligned_alloc(4096, TYPEALIGN(4096, size));
+#else
 		hdr = (PGShmemHeader *) malloc(size);
+#endif
 		if (!hdr)
 			ereport(FATAL,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -548,12 +567,41 @@ CreateFakeSharedMemoryAndSemaphores(void)
 		hdr->device = 42; /* not relevant for non-shared memory */
 		hdr->inode = 43; /* not relevant for non-shared memory */
 		hdr->totalsize = size;
+#if PG_MAJORVERSION_NUM >= 19
+		hdr->content_offset = MAXALIGN(sizeof(PGShmemHeader));
+#else
 		hdr->freeoffset = MAXALIGN(sizeof(PGShmemHeader));
+#endif
 
 		UsedShmemSegAddr = hdr;
 		UsedShmemSegID = (unsigned long) 42; /* not relevant for non-shared memory */
 	}
 
+#if PG_MAJORVERSION_NUM >= 19
+	/*
+	 * v19: subsystems register ShmemCallbacks; InitShmemAllocator() +
+	 * ShmemInitRequested() initialize all of them (incl. semaphores, which
+	 * use DataDir as entropy source, so point it at cwd meanwhile).
+	 * NEEDS REVIEW(pg19): the per-subsystem skipping of the pre-v19 code
+	 * (e.g. AsyncShmemInit due to the pg_notify directory check) is no
+	 * longer possible; verify that walredo starts and RSS is acceptable.
+	 */
+	if (!getcwd(cwd, MAXPGPATH))
+		ereport(FATAL,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("[neon-wal-redo] can not read current directory name")));
+	DataDir = cwd;
+	/* AsyncShmemInit scans pg_notify; cwd is an empty scratch dir */
+	if (MakePGDirectory("pg_notify") < 0 && errno != EEXIST)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("[neon-wal-redo] could not create pg_notify: %m")));
+	InitShmemAllocator(hdr);
+	ShmemInitRequested();
+	DataDir = NULL;
+	if (shmem_startup_hook)
+		shmem_startup_hook();
+#else
 	InitShmemAccess(hdr);
 
 	/*
@@ -691,6 +739,7 @@ CreateFakeSharedMemoryAndSemaphores(void)
 	 */
 	if (shmem_startup_hook)
 		shmem_startup_hook();
+#endif							/* PG_MAJORVERSION_NUM >= 19 */
 }
 
 

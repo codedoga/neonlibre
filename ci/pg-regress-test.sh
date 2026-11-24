@@ -24,6 +24,10 @@ export COMPOSE_PROFILES=test-extensions
 #  misc_functions: since 18.7 it checks en-x-icu, which hits the same ICU mismatch.
 EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8 misc_functions}"
 
+# PG19 compute.sh turns md5_password_warnings off (the auth warning precedes PGOPTIONS and
+# would fail every test), so the password test, which expects those warnings, fails.
+[[ "${PG_VERSION}" -ge 19 ]] && EXPECTED_FAILURES="${EXPECTED_FAILURES} password"  # tablespace passed once tablespace_1.out was updated for 19 (psql \d+ layout)
+
 R=/postgres/src/test/regress
 OUT="$(mktemp -d)"
 trap '[[ "${KEEP_UP:-0}" == 1 ]] || dc down -v --remove-orphans >/dev/null 2>&1' EXIT
@@ -58,7 +62,9 @@ while read -r t; do
 done < <(sed -nE 's/^not ok +[0-9]+ +[+-]? *([^ ]+).*/\1/p' "${OUT}/regress.log")
 grep -qE '^# All [0-9]+ tests passed|^ok ' "${OUT}/regress.log" || die "pg_regress did not run"
 if ((${#unexpected[@]})); then
-    dc exec -T neon-test-extensions head -c 200000 /tmp/regress-out/regression.diffs || true
+    for t in "${unexpected[@]}"; do
+        dc exec -T -w "${R}" neon-test-extensions diff -U3 "expected/${t}.out" "/tmp/regress-out/results/${t}.out" | head -c 20000 || true
+    done
     die "unexpected regression failures: ${unexpected[*]}"
 fi
 

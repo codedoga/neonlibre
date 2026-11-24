@@ -17,8 +17,12 @@
 
 #include "neon_pgversioncompat.h"
 
+#include "access/htup_details.h"
+#include "port/pg_bitutils.h"
 #include "access/parallel.h"
 #include "access/xlog.h"
+#include "catalog/pg_type.h"
+#include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "common/hashfn.h"
@@ -36,7 +40,11 @@
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#if PG_VERSION_NUM < 190000
 #include "utils/dynahash.h"
+#else
+#include "utils/hsearch.h"
+#endif
 #include "utils/guc.h"
 
 #if PG_VERSION_NUM >= 150000
@@ -365,7 +373,10 @@ LfcShmemInit(void)
 		 * of victim
 		 */
 		lfc_hash = ShmemInitHash("lfc_hash",
-								 n_chunks + 1, n_chunks + 1,
+#if PG_MAJORVERSION_NUM < 19
+								 n_chunks + 1,	/* PG19 dropped init_size */
+#endif
+								 n_chunks + 1,
 								 &info,
 								 HASH_ELEM | HASH_BLOBS);
 		memset(lfc_ctl, 0, sizeof(FileCacheControl));

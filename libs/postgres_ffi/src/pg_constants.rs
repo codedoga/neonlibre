@@ -110,6 +110,7 @@ pub const XLOG_FPI: u8 = 0xB0;
 // From multixact.h
 pub const FIRST_MULTIXACT_ID: u32 = 1;
 pub const MAX_MULTIXACT_ID: u32 = 0xFFFFFFFF;
+// v14..v18 only: PG19 offsets are 64-bit and never wrap around.
 pub const MAX_MULTIXACT_OFFSET: u32 = 0xFFFFFFFF;
 
 pub const XLOG_MULTIXACT_ZERO_OFF_PAGE: u8 = 0x00;
@@ -118,6 +119,8 @@ pub const XLOG_MULTIXACT_CREATE_ID: u8 = 0x20;
 pub const XLOG_MULTIXACT_TRUNCATE_ID: u8 = 0x30;
 
 pub const MULTIXACT_OFFSETS_PER_PAGE: u16 = BLCKSZ / 4;
+/// PG19: BLCKSZ / sizeof(MultiXactOffset), which became uint64. The members layout is unchanged.
+pub const MULTIXACT_OFFSETS_PER_PAGE_V19: u16 = BLCKSZ / 8;
 pub const MXACT_MEMBER_BITS_PER_XACT: u16 = 8;
 pub const MXACT_MEMBER_FLAGS_PER_BYTE: u16 = 1;
 pub const MULTIXACT_FLAGBYTES_PER_GROUP: u16 = 4;

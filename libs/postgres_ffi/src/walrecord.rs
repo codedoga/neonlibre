@@ -212,6 +212,7 @@ impl DecodedWALRecord {
                 PgMajorVersion::PG16 => info == crate::v16::bindings::XLOG_DBASE_CREATE_FILE_COPY,
                 PgMajorVersion::PG17 => info == crate::v17::bindings::XLOG_DBASE_CREATE_FILE_COPY,
                 PgMajorVersion::PG18 => info == crate::v18::bindings::XLOG_DBASE_CREATE_FILE_COPY,
+                PgMajorVersion::PG19 => info == crate::v19::bindings::XLOG_DBASE_CREATE_FILE_COPY,
             }
         } else {
             false
@@ -884,6 +885,70 @@ pub mod v17 {
                 this_time_line_id: buf.get_u32_le(),
                 prev_time_line_id: buf.get_u32_le(),
                 wal_level: buf.get_i32_le(),
+            }
+        }
+    }
+}
+
+pub mod v19 {
+    //! Of the records decoded here, PG19 changed only the multixact ones (MultiXactOffset
+    //! became uint64, xl_multixact_truncate was redefined); those are below. The other
+    //! decoders are inherited from v17, unchanged in the PG19 headers.
+    use bytes::{Buf, Bytes};
+    use serde::{Deserialize, Serialize};
+
+    use super::MultiXactMember;
+    pub use super::v17::{
+        XlEndOfRecovery, XlHeapDelete, XlHeapInsert, XlHeapLock, XlHeapLockUpdated,
+        XlHeapMultiInsert, XlHeapUpdate, XlParameterChange, rm_neon,
+    };
+    use crate::{MultiXactId, Oid};
+
+    /// PG19 xl_multixact_create: mid@0, 4 padding bytes, moff (uint64)@8, nmembers@16,
+    /// members@20 (= SizeOfMultiXactCreate). Padding assumes 8-byte uint64 alignment
+    /// (all 64-bit platforms).
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct XlMultiXactCreate {
+        pub mid: MultiXactId,
+        pub moff: u64,
+        pub nmembers: u32,
+        pub members: Vec<MultiXactMember>,
+    }
+
+    impl XlMultiXactCreate {
+        pub fn decode(buf: &mut Bytes) -> XlMultiXactCreate {
+            let mid = buf.get_u32_le();
+            buf.advance(4);
+            let moff = buf.get_u64_le();
+            let nmembers = buf.get_u32_le();
+            let members = (0..nmembers)
+                .map(|_| MultiXactMember::decode(buf))
+                .collect();
+            XlMultiXactCreate {
+                mid,
+                moff,
+                nmembers,
+                members,
+            }
+        }
+    }
+
+    /// PG19 xl_multixact_truncate: oldestMultiDB@0, oldestMulti@4, oldestOffset (uint64)@8.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct XlMultiXactTruncate {
+        pub oldest_multi_db: Oid,
+        /// Offsets segments older than this are truncated.
+        pub oldest_multi: MultiXactId,
+        /// Members segments older than this are truncated.
+        pub oldest_offset: u64,
+    }
+
+    impl XlMultiXactTruncate {
+        pub fn decode(buf: &mut Bytes) -> XlMultiXactTruncate {
+            XlMultiXactTruncate {
+                oldest_multi_db: buf.get_u32_le(),
+                oldest_multi: buf.get_u32_le(),
+                oldest_offset: buf.get_u64_le(),
             }
         }
     }

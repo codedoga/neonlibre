@@ -141,7 +141,12 @@ impl<R: RecordGenerator> WalGenerator<R> {
             if lsn.block_offset() == 0 {
                 let mut page_header = XLogPageHeaderData {
                     xlp_magic: XLOG_PAGE_MAGIC as u16,
-                    xlp_info: XLP_BKP_REMOVABLE,
+                    // PG19 dropped XLP_BKP_REMOVABLE; 0x0004 is XLP_FIRST_IS_OVERWRITE_CONTRECORD there.
+                    xlp_info: if super::bindings::MY_PGVERSION.major_version_num() >= 19 {
+                        0
+                    } else {
+                        XLP_BKP_REMOVABLE
+                    },
                     xlp_tli: Self::TIMELINE_ID,
                     xlp_pageaddr: lsn.0,
                     xlp_rem_len: 0,

@@ -236,18 +236,20 @@ where
     buf: Vec<u8>,
     current_segment: Option<(SlruKind, u32)>,
     total_blocks: usize,
+    pg_version: PgMajorVersion,
 }
 
 impl<'a, 'b, W> SlruSegmentsBuilder<'a, 'b, W>
 where
     W: AsyncWrite + Send + Sync + Unpin,
 {
-    fn new(ar: &'a mut Builder<&'b mut W>) -> Self {
+    fn new(ar: &'a mut Builder<&'b mut W>, pg_version: PgMajorVersion) -> Self {
         Self {
             ar,
             buf: Vec::new(),
             current_segment: None,
             total_blocks: 0,
+            pg_version,
         }
     }
 
@@ -300,7 +302,13 @@ where
     async fn flush(&mut self) -> Result<(), BasebackupError> {
         let nblocks = self.buf.len() / BLCKSZ as usize;
         let (kind, segno) = self.current_segment.take().unwrap();
-        let segname = format!("{kind}/{segno:>04X}");
+        // PG19 opens the multixact members SLRU with long_segment_names (SlruFileName: %015X).
+        let segname =
+            if kind == SlruKind::MultiXactMembers && self.pg_version >= PgMajorVersion::PG19 {
+                format!("{kind}/{segno:015X}")
+            } else {
+                format!("{kind}/{segno:>04X}")
+            };
         let header = new_tar_header(&segname, self.buf.len() as u64)?;
         self.ar
             .append(&header, self.buf.as_slice())
@@ -403,7 +411,7 @@ where
                     BLCKSZ as u64,
                 );
 
-            let mut slru_builder = SlruSegmentsBuilder::new(&mut self.ar);
+            let mut slru_builder = SlruSegmentsBuilder::new(&mut self.ar, self.timeline.pg_version);
 
             for part in slru_partitions.parts {
                 let query = VersionedKeySpaceQuery::uniform(part, self.lsn);

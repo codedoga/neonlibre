@@ -285,6 +285,7 @@ impl ControlFile {
             202307071 => PgMajorVersion::PG16,
             202406281 => PgMajorVersion::PG17,
             202506291 => PgMajorVersion::PG18,
+            202610061 => PgMajorVersion::PG19,
             catversion => {
                 anyhow::bail!("unrecognized catalog version {catversion}")
             }
