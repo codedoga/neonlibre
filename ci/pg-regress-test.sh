@@ -46,6 +46,9 @@ set +e
 # would add a Query Identifier line to every EXPLAIN VERBOSE; the compose config's md5
 # password_encryption a warning to create_role.
 opts="-c neon.regress_test_mode=on -c compute_query_id=off -c password_encryption=scram-sha-256"
+# PG19 compute.sh turns md5_password_warnings off (the warning precedes PGOPTIONS);
+# the password test expects it.
+[[ "${PG_VERSION}" -ge 19 ]] && opts="${opts} -c md5_password_warnings=on"
 dc exec -T -w "${R}" -e PGOPTIONS="${opts}" \
     neon-test-extensions ./pg_regress \
     --inputdir=. --outputdir=/tmp/regress-out --bindir=/usr/local/pgsql/bin \
@@ -58,7 +61,9 @@ while read -r t; do
 done < <(sed -nE 's/^not ok +[0-9]+ +[+-]? *([^ ]+).*/\1/p' "${OUT}/regress.log")
 grep -qE '^# All [0-9]+ tests passed|^ok ' "${OUT}/regress.log" || die "pg_regress did not run"
 if ((${#unexpected[@]})); then
-    dc exec -T neon-test-extensions head -c 200000 /tmp/regress-out/regression.diffs || true
+    for t in "${unexpected[@]}"; do
+        dc exec -T -w "${R}" neon-test-extensions diff -U3 "expected/${t}.out" "/tmp/regress-out/results/${t}.out" | head -c 20000 || true
+    done
     die "unexpected regression failures: ${unexpected[*]}"
 fi
 
