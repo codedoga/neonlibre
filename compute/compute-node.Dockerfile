@@ -334,18 +334,18 @@ RUN ./autogen.sh && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis.control && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis_raster.control && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis_sfcgal.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control && \
+    ( [ ! -f /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control ] || echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control ) && \
     echo 'trusted = true' >> /usr/local/pgsql/share/extension/postgis_topology.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/address_standardizer.control && \
-    echo 'trusted = true' >> /usr/local/pgsql/share/extension/address_standardizer_data_us.control && \
+    ( [ ! -f /usr/local/pgsql/share/extension/address_standardizer.control ] || echo 'trusted = true' >> /usr/local/pgsql/share/extension/address_standardizer.control ) && \
+    ( [ ! -f /usr/local/pgsql/share/extension/address_standardizer_data_us.control ] || echo 'trusted = true' >> /usr/local/pgsql/share/extension/address_standardizer_data_us.control ) && \
     mkdir -p /extensions/postgis && \
     cp /usr/local/pgsql/share/extension/postgis.control /extensions/postgis && \
     cp /usr/local/pgsql/share/extension/postgis_raster.control /extensions/postgis && \
     cp /usr/local/pgsql/share/extension/postgis_sfcgal.control /extensions/postgis && \
-    cp /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control /extensions/postgis && \
+    ( [ ! -f /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control ] || cp /usr/local/pgsql/share/extension/postgis_tiger_geocoder.control /extensions/postgis ) && \
     cp /usr/local/pgsql/share/extension/postgis_topology.control /extensions/postgis && \
-    cp /usr/local/pgsql/share/extension/address_standardizer.control /extensions/postgis && \
-    cp /usr/local/pgsql/share/extension/address_standardizer_data_us.control /extensions/postgis
+    ( [ ! -f /usr/local/pgsql/share/extension/address_standardizer.control ] || cp /usr/local/pgsql/share/extension/address_standardizer.control /extensions/postgis ) && \
+    ( [ ! -f /usr/local/pgsql/share/extension/address_standardizer_data_us.control ] || cp /usr/local/pgsql/share/extension/address_standardizer_data_us.control /extensions/postgis )
 
 #########################################################################################
 #
