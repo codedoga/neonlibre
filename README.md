@@ -35,6 +35,14 @@ serverless Postgres with separated storage and compute, built for **PostgreSQL
 
 ### PostgreSQL 19
 
+> **PostgreSQL 19 support is experimental.** Neon has no official PG19 support; this is a port of
+> Neon's patch set onto `REL_19_STABLE`. The build and a minor test subset pass (Postgres regress,
+> isolation, VM bits, multixact, hot standby, branching). The full pytest suite and the extension
+> test suites have not been run on v19. Two known gaps: the pageserver logs a `rel_size_v2`
+> "relation already exists" warning on `CREATE DATABASE` (allowed for v19 in the tests, cause not
+> found), and the WAL-redo paths for visibility-map bits and 64-bit multixact offsets are only
+> covered by those tests. Do not use it for data you cannot lose. v18 is unaffected.
+
 `compute-v19` is available (PostgreSQL from `REL_19_STABLE_neon` of `codedoga/postgres`,
 `vendor/postgres-v19`). It is a first, smaller extension set than v18:
 
