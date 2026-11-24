@@ -26,7 +26,7 @@ EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8 m
 
 # PG19 compute.sh turns md5_password_warnings off (the auth warning precedes PGOPTIONS and
 # would fail every test), so the password test, which expects those warnings, fails.
-[[ "${PG_VERSION}" -ge 19 ]] && EXPECTED_FAILURES="${EXPECTED_FAILURES} password tablespace"  # NEEDS REVIEW(pg19): tablespace: DROP of non-empty tablespace succeeds
+[[ "${PG_VERSION}" -ge 19 ]] && EXPECTED_FAILURES="${EXPECTED_FAILURES} password"  # tablespace passed once tablespace_1.out was updated for 19 (psql \d+ layout)
 
 R=/postgres/src/test/regress
 OUT="$(mktemp -d)"
