@@ -24,6 +24,10 @@ export COMPOSE_PROFILES=test-extensions
 #  misc_functions: since 18.7 it checks en-x-icu, which hits the same ICU mismatch.
 EXPECTED_FAILURES="${EXPECTED_FAILURES:-copy psql largeobject collate.icu.utf8 misc_functions}"
 
+# PG19 compute.sh turns md5_password_warnings off (the auth warning precedes PGOPTIONS and
+# would fail every test), so the password test, which expects those warnings, fails.
+[[ "${PG_VERSION}" -ge 19 ]] && EXPECTED_FAILURES="${EXPECTED_FAILURES} password"
+
 R=/postgres/src/test/regress
 OUT="$(mktemp -d)"
 trap '[[ "${KEEP_UP:-0}" == 1 ]] || dc down -v --remove-orphans >/dev/null 2>&1' EXIT
@@ -46,9 +50,6 @@ set +e
 # would add a Query Identifier line to every EXPLAIN VERBOSE; the compose config's md5
 # password_encryption a warning to create_role.
 opts="-c neon.regress_test_mode=on -c compute_query_id=off -c password_encryption=scram-sha-256"
-# PG19 compute.sh turns md5_password_warnings off (the warning precedes PGOPTIONS);
-# the password test expects it.
-[[ "${PG_VERSION}" -ge 19 ]] && opts="${opts} -c md5_password_warnings=on"
 dc exec -T -w "${R}" -e PGOPTIONS="${opts}" \
     neon-test-extensions ./pg_regress \
     --inputdir=. --outputdir=/tmp/regress-out --bindir=/usr/local/pgsql/bin \
