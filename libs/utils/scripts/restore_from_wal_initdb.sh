@@ -11,7 +11,11 @@ PORT=$4
 PG_VERSION=$5
 echo "port=$PORT" >> "$DATA_DIR"/postgresql.conf
 echo "shared_preload_libraries='\$libdir/neon_rmgr.so'" >> "$DATA_DIR"/postgresql.conf
-REDO_POS=0x$("$PG_BIN"/pg_controldata -D "$DATA_DIR" | grep -F "REDO location"| cut -c 42-)
+# Offset of the REDO record inside WAL segment 1 (16MB segments). Parse the LSN rather than
+# cutting columns: v19 prints LSNs zero-padded (0/014E8320), so `cut -c 42-` returned the
+# whole LSN, dd then copied the full initdb segment over the timeline WAL.
+REDO_LSN=$("$PG_BIN"/pg_controldata -D "$DATA_DIR" | grep -F "REDO location" | awk '{print $NF}')
+declare -i REDO_POS=$(( 0x${REDO_LSN#*/} & 0xFFFFFF ))
 # XLogRecord header (24) + short data header (2) + sizeof(CheckPoint): 88 up to v18, 96 on v19
 CHECKPOINT_SIZE=88
 if [ "$PG_VERSION" -ge 19 ]; then CHECKPOINT_SIZE=96; fi
