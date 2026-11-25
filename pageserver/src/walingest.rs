@@ -1431,6 +1431,14 @@ impl WalIngest {
                 }
                 _ => {}
             }
+        } else if info == pg_constants::XLOG_LOGICAL_DECODING_STATUS_CHANGE {
+            // PG19: without this the basebackup checkpoint keeps logicalDecodingEnabled=false,
+            // the restarted compute re-emits the 'enabled' record at end of recovery, and a
+            // logical slot with an older restart_lsn fails to decode it.
+            if let CheckPoint::V19(cp) = &mut self.checkpoint {
+                cp.logicalDecodingEnabled = buf.get_u8() != 0;
+                self.checkpoint_modified = true;
+            }
         } else if info == pg_constants::XLOG_END_OF_RECOVERY {
             match &mut self.checkpoint {
                 CheckPoint::V17(cp) => {

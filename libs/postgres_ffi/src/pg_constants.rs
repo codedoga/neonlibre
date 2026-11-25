@@ -220,6 +220,8 @@ pub const INVALID_TRANSACTION_ID: u32 = 0;
 pub const XLOG_CHECKPOINT_SHUTDOWN: u8 = 0x00;
 pub const XLOG_CHECKPOINT_ONLINE: u8 = 0x10;
 pub const XLOG_PARAMETER_CHANGE: u8 = 0x60;
+// PG19+: xl_logical_decoding_status_change is a single bool
+pub const XLOG_LOGICAL_DECODING_STATUS_CHANGE: u8 = 0xF0;
 pub const XLOG_END_OF_RECOVERY: u8 = 0x90;
 
 /* From xlog.h */
