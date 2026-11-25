@@ -134,7 +134,8 @@ LwLsnCacheShmemRequest(void)
 {
 	Size requested_size = sizeof(LwLsnCacheCtl);
 
-	requested_size += hash_estimate_size(lwlsn_cache_size, sizeof(LastWrittenLsnCacheEntry));
+	/* +1: see LwLsnCacheShmemInit() */
+	requested_size += hash_estimate_size(lwlsn_cache_size + 1, sizeof(LastWrittenLsnCacheEntry));
 
 	RequestAddinShmemSpace(requested_size);
 
@@ -157,12 +158,18 @@ LwLsnCacheShmemInit(void)
 	{
 		info.keysize = sizeof(BufferTag);
 		info.entrysize = sizeof(LastWrittenLsnCacheEntry);
+		/*
+		 * lwlsn_cache_size+1 because a new entry is added to the hash before
+		 * the LRU victim is removed (as in file_cache.c). Up to v18 the
+		 * table could borrow the extra element from spare shmem; v19 shared
+		 * hashes are preallocated and cannot grow, so without the +1 the
+		 * insert fails with "out of shared memory" once the cache is full.
+		 */
 		lastWrittenLsnCache = ShmemInitHash("last_written_lsn_cache",
-#if PG_MAJORVERSION_NUM >= 19
-			lwlsn_cache_size,
-#else
-			lwlsn_cache_size, lwlsn_cache_size,
+#if PG_MAJORVERSION_NUM < 19
+			lwlsn_cache_size + 1,	/* PG19 dropped init_size */
 #endif
+			lwlsn_cache_size + 1,
 										&info,
 										HASH_ELEM | HASH_BLOBS);
 		LwLsnCache = ShmemInitStruct("neon/LwLsnCacheCtl", sizeof(LwLsnCacheCtl), &found);
