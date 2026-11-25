@@ -466,4 +466,8 @@ $$;
         query_scalar(cur, "select next_multi_offset from pg_control_checkpoint()")
     )
     log.info(f"next_multi_offset after restart: {next_multi_offset_after_restart}")
-    assert next_multi_offset_after_restart < 100000
+    if pg_bin.pg_version >= PgVersion.V19:
+        # v19 offsets are 64-bit and don't wrap: must have crossed 2^32 untruncated
+        assert next_multi_offset_after_restart > 0xFFFFFFFF
+    else:
+        assert next_multi_offset_after_restart < 100000
