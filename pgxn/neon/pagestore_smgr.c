@@ -237,6 +237,15 @@ neon_wallog_pagev(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		XLogRecPtr	recptr;
 		recptr = log_newpages_copy(&InfoFromSMgrRel(reln), forknum, blocknum,
 								   nblocks, (Page *) buffers, false);
+#if PG_MAJORVERSION_NUM >= 19
+
+		/*
+		 * Flush like neon_wallog_page() does. v19 reads set VM bits, so the
+		 * bgwriter evicts dirty VM pages all the time; an unflushed image
+		 * leaves the flush LSN mid-record until the next running-xacts record.
+		 */
+		XLogFlush(recptr);
+#endif
 
 		for (int i = 0; i < nblocks; i++)
 			PageSetLSN(unconstify(char *, buffers[i]), recptr);

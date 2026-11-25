@@ -600,6 +600,12 @@ def test_subscriber_synchronous_commit(neon_simple_env: NeonEnv, vanilla_pg: Van
             scur.execute(query)
             time.sleep(2)  # let initial table sync complete
 
+    # PG19 sets pd_prune_xid on INSERT, so the count(*) below would prune on access and
+    # then read VM/FSM pages, which can't be served while the safekeepers are down. A
+    # snapshot taken before the inserts keeps them unprunable until the check is done.
+    horizon = sub.connect()
+    horizon.cursor().execute("BEGIN ISOLATION LEVEL REPEATABLE READ; SELECT 1")
+
     # stop safekeeper so it won't get any data
     for sk in env.safekeepers:
         sk.stop()
@@ -615,6 +621,7 @@ def test_subscriber_synchronous_commit(neon_simple_env: NeonEnv, vanilla_pg: Van
     # safekeeper is down.
     vanilla_pg.safe_psql("checkpoint;")
     assert cast("int", sub.safe_psql_scalar("SELECT count(*) FROM t")) == 1000
+    horizon.close()
 
     # restart subscriber and ensure it can catch up lost tail again
     sub.stop(mode="immediate")

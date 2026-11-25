@@ -86,6 +86,11 @@ def test_cancellations(neon_simple_env: NeonEnv):
                 CREATE EXTENSION pg_prewarm;
                 """
             )
+            # PG19 sets pd_prune_xid on INSERT too, and on-access pruning pins the
+            # visibility map: a catalog page left prunable by the DDL above makes its
+            # first read issue an smgrexists() on the VM fork, so the queries below
+            # would also wait on the "exists" failpoint. Vacuum leaves nothing to prune.
+            cur.execute("VACUUM (FREEZE);")
 
     # data preparation is now complete, with 2 disjoint tables that aren't
     # preloaded into any caches.
