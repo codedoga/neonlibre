@@ -13,6 +13,7 @@ from fixtures.neon_fixtures import (
     import_timeline_from_vanilla_postgres,
     wait_for_wal_insert_lsn,
 )
+from fixtures.pg_version import PgVersion
 from fixtures.remote_storage import RemoteStorageKind
 from fixtures.utils import query_scalar
 
@@ -204,8 +205,10 @@ MULTIXACT_MEMBERGROUPS_PER_PAGE = int(BLCKSZ / MULTIXACT_MEMBERGROUP_SIZE)
 MULTIXACT_MEMBERS_PER_PAGE = MULTIXACT_MEMBERGROUPS_PER_PAGE * MULTIXACT_MEMBERS_PER_MEMBERGROUP
 
 
-def MultiXactIdToOffsetSegment(xid: int):
-    return int(xid / (SLRU_PAGES_PER_SEGMENT * MULTIXACT_OFFSETS_PER_PAGE))
+def MultiXactIdToOffsetSegment(xid: int, pg_version: PgVersion):
+    # PG19 made MultiXactOffset 64-bit, so an offsets page holds half as many entries
+    per_page = BLCKSZ // 8 if pg_version >= PgVersion.V19 else MULTIXACT_OFFSETS_PER_PAGE
+    return int(xid / (SLRU_PAGES_PER_SEGMENT * per_page))
 
 
 def MXOffsetToMemberSegment(off: int):
@@ -257,13 +260,15 @@ def advance_multixid_to(
     # missing. That's OK for our purposes. Autovacuum will print some warnings about the
     # missing segments, but will clean it up by truncating the SLRUs up to the new value,
     # closing the gap.
-    segname = f"{MultiXactIdToOffsetSegment(next_multi_xid):04X}"
+    segname = f"{MultiXactIdToOffsetSegment(next_multi_xid, pg_bin.pg_version):04X}"
     log.info(f"Creating dummy segment pg_multixact/offsets/{segname}")
     with open(vanilla_pg.pgdatadir / "pg_multixact" / "offsets" / segname, "w") as of:
         of.write("\0" * SLRU_PAGES_PER_SEGMENT * BLCKSZ)
         of.flush()
 
-    segname = f"{MXOffsetToMemberSegment(next_multi_offset):04X}"
+    # PG19's members SLRU uses long (15 hex digit) segment names
+    width = 15 if pg_bin.pg_version >= PgVersion.V19 else 4
+    segname = f"{MXOffsetToMemberSegment(next_multi_offset):0{width}X}"
     log.info(f"Creating dummy segment pg_multixact/members/{segname}")
     with open(vanilla_pg.pgdatadir / "pg_multixact" / "members" / segname, "w") as of:
         of.write("\0" * SLRU_PAGES_PER_SEGMENT * BLCKSZ)
