@@ -8,10 +8,14 @@ PG_BIN=$1
 WAL_PATH=$2
 DATA_DIR=$3
 PORT=$4
+PG_VERSION=$5
 echo "port=$PORT" >> "$DATA_DIR"/postgresql.conf
 echo "shared_preload_libraries='\$libdir/neon_rmgr.so'" >> "$DATA_DIR"/postgresql.conf
 REDO_POS=0x$("$PG_BIN"/pg_controldata -D "$DATA_DIR" | grep -F "REDO location"| cut -c 42-)
-declare -i WAL_SIZE=$REDO_POS+114
+# XLogRecord header (24) + short data header (2) + sizeof(CheckPoint): 88 up to v18, 96 on v19
+CHECKPOINT_SIZE=88
+if [ "$PG_VERSION" -ge 19 ]; then CHECKPOINT_SIZE=96; fi
+declare -i WAL_SIZE=$REDO_POS+26+CHECKPOINT_SIZE
 "$PG_BIN"/pg_ctl -D "$DATA_DIR" -l "$DATA_DIR/logfile.log" start
 "$PG_BIN"/pg_ctl -D "$DATA_DIR" -l "$DATA_DIR/logfile.log" stop -m immediate
 cp "$DATA_DIR"/pg_wal/000000010000000000000001 "$DATA_DIR"
