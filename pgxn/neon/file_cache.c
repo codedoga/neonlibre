@@ -2109,6 +2109,9 @@ get_prewarm_info(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "prewarmed_pages", INT4OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "skipped_pages", INT4OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "active_workers", INT4OID, -1, 0);
+#if PG_MAJORVERSION_NUM >= 19
+	TupleDescFinalize(tupdesc);	/* v19: required before BlessTupleDesc() */
+#endif
 	tupdesc = BlessTupleDesc(tupdesc);
 
 	MemSet(nulls, 0, sizeof(nulls));
